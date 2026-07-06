@@ -12,7 +12,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.schedule import Schedule
 from app.models.workflow import Workflow
-from app.services import workflow_service
+from app.services import webhook_service, workflow_service
 from app.services.ai_provider import AIProviderFactory, CompletionResult
 
 logger = get_logger(__name__)
@@ -87,6 +87,17 @@ async def execute_schedule(db: AsyncSession, schedule: Schedule) -> str:
         logger.warning("schedule_cron_invalid", schedule_id=str(schedule.id), error=str(exc))
         schedule.next_run_at = None
     await db.flush()
+
+    # Notify outgoing webhooks (fire-and-forget; never blocks the schedule)
+    webhook_service.fire_event_background(
+        schedule.user_id,
+        "schedule.completed",
+        {
+            "schedule_id": str(schedule.id),
+            "name": schedule.name,
+            "status": schedule.last_status,
+        },
+    )
     return schedule.last_status
 
 

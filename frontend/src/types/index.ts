@@ -468,3 +468,73 @@ export interface ApiKeyCreated {
   created_at: string;
   key: string;
 }
+
+// ==================== INTEGRATION TYPES ====================
+export type IntegrationProvider = "github" | "slack" | "discord" | "notion";
+
+export interface Integration {
+  id: string;
+  user_id: string;
+  provider: IntegrationProvider;
+  name: string;
+  /** Credentials are write-only — the API only reports whether they exist. */
+  has_credentials: boolean;
+  config: Record<string, unknown>;
+  status: "connected" | "error";
+  last_error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GithubRepo {
+  full_name: string;
+  description: string | null;
+  stars: number;
+  updated_at: string;
+}
+
+export interface GithubPR {
+  number: number;
+  title: string;
+  user: string;
+  created_at: string;
+}
+
+export interface PRSummary {
+  summary: string;
+  title: string;
+  number: number;
+  files_changed: number;
+}
+
+// ==================== WEBHOOK TYPES ====================
+export interface WebhookTrigger {
+  id: string;
+  user_id: string;
+  name: string;
+  token: string;
+  workflow_id: string;
+  url: string;
+  is_active: boolean;
+  trigger_count: number;
+  last_triggered_at?: string;
+  created_at: string;
+}
+
+export type WebhookEvent =
+  | "workflow.completed"
+  | "workflow.failed"
+  | "schedule.completed"
+  | "task.completed";
+
+export interface OutgoingWebhook {
+  id: string;
+  user_id: string;
+  name: string;
+  url: string;
+  events: WebhookEvent[];
+  secret?: string | null;
+  is_active: boolean;
+  last_status?: string;
+  created_at: string;
+}

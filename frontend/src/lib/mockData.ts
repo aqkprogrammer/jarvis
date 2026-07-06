@@ -10,6 +10,12 @@ import type {
   WorkflowRun,
   Schedule,
   ApiKey,
+  Integration,
+  GithubRepo,
+  GithubPR,
+  PRSummary,
+  WebhookTrigger,
+  OutgoingWebhook,
 } from "@/types";
 
 // ─── Demo credentials ────────────────────────────────────────────────────────
@@ -535,6 +541,91 @@ export const DEMO_API_KEYS: ApiKey[] = [
     last_used_at: "2026-04-02T08:30:00Z",
     revoked: true,
     created_at: "2026-02-01T09:00:00Z",
+  },
+];
+
+// ─── Integrations ─────────────────────────────────────────────────────────────
+export const DEMO_INTEGRATIONS: Integration[] = [
+  {
+    id: "int-001",
+    user_id: "demo-user-001",
+    provider: "github",
+    name: "Personal GitHub",
+    has_credentials: true,
+    config: { username: "aqkprogrammer" },
+    status: "connected",
+    created_at: "2026-06-12T09:00:00Z",
+    updated_at: "2026-07-05T18:30:00Z",
+  },
+  {
+    id: "int-002",
+    user_id: "demo-user-001",
+    provider: "slack",
+    name: "Team Slack",
+    has_credentials: true,
+    config: { default_channel: "#engineering" },
+    status: "connected",
+    created_at: "2026-06-15T14:00:00Z",
+    updated_at: "2026-07-04T11:00:00Z",
+  },
+];
+
+// ─── GitHub demo data (integration actions) ───────────────────────────────────
+export const DEMO_GITHUB_REPOS: GithubRepo[] = [
+  { full_name: "aqkprogrammer/jarvis", description: "Personal AI assistant platform — FastAPI backend + Next.js frontend", stars: 128, updated_at: "2026-07-05T20:12:00Z" },
+  { full_name: "aqkprogrammer/dotfiles", description: "macOS setup: zsh, neovim, tmux and friends", stars: 34, updated_at: "2026-07-01T08:45:00Z" },
+  { full_name: "aqkprogrammer/ml-experiments", description: "Notebooks and training runs for side-project models", stars: 57, updated_at: "2026-06-28T17:30:00Z" },
+  { full_name: "aqkprogrammer/portfolio", description: null, stars: 12, updated_at: "2026-06-20T13:00:00Z" },
+  { full_name: "aqkprogrammer/api-toolkit", description: "Typed HTTP client generators for internal APIs", stars: 89, updated_at: "2026-07-03T09:20:00Z" },
+];
+
+export const DEMO_GITHUB_PRS: GithubPR[] = [
+  { number: 48, title: "Add webhook trigger support for workflows", user: "aqkprogrammer", created_at: "2026-07-04T15:20:00Z" },
+  { number: 47, title: "Fix race condition in scheduler tick loop", user: "pepper-dev", created_at: "2026-07-03T11:05:00Z" },
+  { number: 45, title: "Upgrade to Next.js 14.2 and fix strict-mode type errors", user: "rhodey-ops", created_at: "2026-07-01T09:40:00Z" },
+];
+
+/** Fabricates a realistic multi-paragraph AI review summary for a demo PR. */
+export function buildDemoPRSummary(repo: string, number: number): PRSummary {
+  const pr = DEMO_GITHUB_PRS.find((p) => p.number === number);
+  const title = pr?.title ?? `PR #${number}`;
+  const filesChanged = 4 + (number % 9);
+  const summary = [
+    `"${title}" (${repo}#${number}) is a well-scoped change touching ${filesChanged} files. The diff stays focused on the feature itself — implementation, route wiring and schema updates — with no unrelated refactoring mixed in, which keeps the review surface small.`,
+    `Key changes:\n• Core implementation updated end to end, including request validation and error paths\n• Tests added for the success path plus two failure modes (invalid input, downstream timeout)\n• Type definitions and API schemas kept in sync with the runtime behavior`,
+    `Risk assessment: LOW-MEDIUM. The change is backward compatible behind existing interfaces, but reviewers should verify the new code path emits metrics and that the added database access is covered by an index. Recommended before merge: run the migration against a staging snapshot and confirm p95 latency on the touched endpoint is unchanged.`,
+  ].join("\n\n");
+  return { summary, title, number, files_changed: filesChanged };
+}
+
+// ─── Incoming webhook triggers ────────────────────────────────────────────────
+export const DEMO_WEBHOOK_TRIGGERS: WebhookTrigger[] = [
+  {
+    id: "whk-001",
+    user_id: "demo-user-001",
+    name: "CI Pipeline Hook",
+    token: "whk_demo_8f2a91c4d7",
+    workflow_id: "wf-001",
+    url: "http://localhost:8000/api/v1/hooks/whk_demo_8f2a91c4d7",
+    is_active: true,
+    trigger_count: 17,
+    last_triggered_at: "2026-07-05T22:41:00Z",
+    created_at: "2026-06-20T10:00:00Z",
+  },
+];
+
+// ─── Outgoing webhooks ────────────────────────────────────────────────────────
+export const DEMO_OUTGOING_WEBHOOKS: OutgoingWebhook[] = [
+  {
+    id: "owh-001",
+    user_id: "demo-user-001",
+    name: "Ops Alerting",
+    url: "https://ops.starkindustries.com/hooks/jarvis",
+    events: ["workflow.completed", "workflow.failed"],
+    secret: "whsec_demo_a1b2c3d4",
+    is_active: true,
+    last_status: "200 OK",
+    created_at: "2026-06-22T16:00:00Z",
   },
 ];
 

@@ -11,6 +11,8 @@ from app.api.v1.endpoints import (
     workflows,
     schedules,
     apikeys,
+    integrations,
+    webhooks,
 )
 
 api_router = APIRouter()
@@ -26,3 +28,7 @@ api_router.include_router(execute.router, prefix="/execute", tags=["execute"])
 api_router.include_router(workflows.router, prefix="/workflows", tags=["workflows"])
 api_router.include_router(schedules.router, prefix="/schedules", tags=["schedules"])
 api_router.include_router(apikeys.router, prefix="/apikeys", tags=["apikeys"])
+api_router.include_router(integrations.router, prefix="/integrations", tags=["integrations"])
+api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+# Public webhook receiver: no auth, the unguessable token is the secret.
+api_router.include_router(webhooks.public_router, prefix="/hooks", tags=["webhooks"])

@@ -19,12 +19,19 @@ import {
   DEMO_WORKFLOW_RUNS,
   DEMO_SCHEDULES,
   DEMO_API_KEYS,
+  DEMO_INTEGRATIONS,
+  DEMO_GITHUB_REPOS,
+  DEMO_GITHUB_PRS,
+  DEMO_WEBHOOK_TRIGGERS,
+  DEMO_OUTGOING_WEBHOOKS,
+  buildDemoPRSummary,
   getRandomDemoResponse,
 } from "./mockData";
 import type {
   Message, Memory, Task, Agent, Document, DocumentSearchResult, ReasoningStep,
   Workflow, WorkflowEdge, WorkflowNode, WorkflowRun, NodeResult,
   Schedule, ScheduleTargetType, ApiKey, ApiKeyCreated,
+  Integration, IntegrationProvider, WebhookTrigger, OutgoingWebhook, WebhookEvent,
 } from "@/types";
 
 // Simulates realistic network latency
@@ -43,6 +50,9 @@ let workflowsStore: Workflow[] = JSON.parse(JSON.stringify(DEMO_WORKFLOWS));
 let workflowRunsStore: WorkflowRun[] = JSON.parse(JSON.stringify(DEMO_WORKFLOW_RUNS));
 let schedulesStore: Schedule[] = JSON.parse(JSON.stringify(DEMO_SCHEDULES));
 let apiKeysStore: ApiKey[] = JSON.parse(JSON.stringify(DEMO_API_KEYS));
+let integrationsStore: Integration[] = JSON.parse(JSON.stringify(DEMO_INTEGRATIONS));
+let webhookTriggersStore: WebhookTrigger[] = JSON.parse(JSON.stringify(DEMO_WEBHOOK_TRIGGERS));
+let outgoingWebhooksStore: OutgoingWebhook[] = JSON.parse(JSON.stringify(DEMO_OUTGOING_WEBHOOKS));
 
 // Walks the workflow graph in edge order and fabricates per-node results.
 function simulateWorkflowRun(workflow: Workflow, input: string): WorkflowRun {
@@ -759,6 +769,189 @@ export const mockApi = {
       if (!existing) throw Object.assign(new Error("API key not found"), { status: 404 });
       apiKeysStore = apiKeysStore.map((k) => (k.id === id ? { ...k, revoked: true } : k));
       return ok({ message: "Revoked" });
+    },
+  },
+
+  integrations: {
+    list: async () => {
+      await delay(300);
+      return ok({ items: integrationsStore, total: integrationsStore.length });
+    },
+    create: async (data: {
+      provider: IntegrationProvider;
+      name: string;
+      credentials: Record<string, string>;
+      config?: Record<string, unknown>;
+    }) => {
+      await delay(500);
+      const now = new Date().toISOString();
+      // Credentials are write-only — the mock only records that they exist
+      const integration: Integration = {
+        id: `int-${Date.now()}`,
+        user_id: DEMO_USER.id,
+        provider: data.provider,
+        name: data.name,
+        has_credentials: Object.keys(data.credentials ?? {}).length > 0,
+        config: data.config ?? {},
+        status: "connected",
+        created_at: now,
+        updated_at: now,
+      };
+      integrationsStore = [...integrationsStore, integration];
+      return ok(integration);
+    },
+    update: async (
+      id: string,
+      data: Partial<{
+        name: string;
+        credentials: Record<string, string>;
+        config: Record<string, unknown>;
+      }>
+    ) => {
+      await delay(300);
+      const existing = integrationsStore.find((i) => i.id === id);
+      if (!existing) throw Object.assign(new Error("Integration not found"), { status: 404 });
+      integrationsStore = integrationsStore.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              name: data.name ?? i.name,
+              config: data.config ?? i.config,
+              has_credentials: data.credentials ? true : i.has_credentials,
+              status: data.credentials ? ("connected" as const) : i.status,
+              last_error: data.credentials ? undefined : i.last_error,
+              updated_at: new Date().toISOString(),
+            }
+          : i
+      );
+      return ok(integrationsStore.find((i) => i.id === id));
+    },
+    delete: async (id: string) => {
+      await delay(200);
+      integrationsStore = integrationsStore.filter((i) => i.id !== id);
+      return ok({ message: "Deleted" });
+    },
+    test: async (id: string) => {
+      await delay(500);
+      const existing = integrationsStore.find((i) => i.id === id);
+      if (!existing) throw Object.assign(new Error("Integration not found"), { status: 404 });
+      integrationsStore = integrationsStore.map((i) =>
+        i.id === id
+          ? { ...i, status: "connected" as const, last_error: undefined, updated_at: new Date().toISOString() }
+          : i
+      );
+      return ok({ status: "connected" });
+    },
+    action: async (id: string, action: string, params: Record<string, unknown> = {}) => {
+      const integration = integrationsStore.find((i) => i.id === id);
+      if (!integration) throw Object.assign(new Error("Integration not found"), { status: 404 });
+      switch (action) {
+        case "list_repos":
+          await delay(600);
+          return ok({ result: DEMO_GITHUB_REPOS });
+        case "list_prs":
+          await delay(500);
+          return ok({ result: DEMO_GITHUB_PRS });
+        case "summarize_pr":
+          await delay(1200);
+          return ok({
+            result: buildDemoPRSummary(String(params.repo ?? "unknown/repo"), Number(params.number ?? 0)),
+          });
+        case "create_issue":
+          await delay(700);
+          return ok({
+            result: { number: 42, url: `https://github.com/${String(params.repo ?? "demo/repo")}/issues/42` },
+          });
+        case "send_message":
+          await delay(500);
+          return ok({ result: { ok: true } });
+        case "create_page":
+          await delay(700);
+          return ok({ result: { id: "demo-notion-page", url: "https://notion.so/demo-notion-page" } });
+        default:
+          throw Object.assign(new Error(`Unknown action "${action}" for provider ${integration.provider}`), { status: 400 });
+      }
+    },
+  },
+
+  webhooks: {
+    listTriggers: async () => {
+      await delay(300);
+      return ok({ items: webhookTriggersStore, total: webhookTriggersStore.length });
+    },
+    createTrigger: async (data: { name: string; workflow_id: string }) => {
+      await delay(400);
+      const token = `whk_demo_${Math.random().toString(36).slice(2, 12)}`;
+      const trigger: WebhookTrigger = {
+        id: `whk-${Date.now()}`,
+        user_id: DEMO_USER.id,
+        name: data.name,
+        token,
+        workflow_id: data.workflow_id,
+        url: `http://localhost:8000/api/v1/hooks/${token}`,
+        is_active: true,
+        trigger_count: 0,
+        created_at: new Date().toISOString(),
+      };
+      webhookTriggersStore = [trigger, ...webhookTriggersStore];
+      return ok(trigger);
+    },
+    deleteTrigger: async (id: string) => {
+      await delay(200);
+      webhookTriggersStore = webhookTriggersStore.filter((t) => t.id !== id);
+      return ok({ message: "Deleted" });
+    },
+    toggleTrigger: async (id: string) => {
+      await delay(200);
+      const existing = webhookTriggersStore.find((t) => t.id === id);
+      if (!existing) throw Object.assign(new Error("Webhook trigger not found"), { status: 404 });
+      webhookTriggersStore = webhookTriggersStore.map((t) =>
+        t.id === id ? { ...t, is_active: !t.is_active } : t
+      );
+      return ok(webhookTriggersStore.find((t) => t.id === id));
+    },
+    listOutgoing: async () => {
+      await delay(300);
+      return ok({ items: outgoingWebhooksStore, total: outgoingWebhooksStore.length });
+    },
+    createOutgoing: async (data: { name: string; url: string; events: WebhookEvent[]; secret?: string }) => {
+      await delay(400);
+      const webhook: OutgoingWebhook = {
+        id: `owh-${Date.now()}`,
+        user_id: DEMO_USER.id,
+        name: data.name,
+        url: data.url,
+        events: data.events,
+        secret: data.secret ?? null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      };
+      outgoingWebhooksStore = [webhook, ...outgoingWebhooksStore];
+      return ok(webhook);
+    },
+    updateOutgoing: async (
+      id: string,
+      data: Partial<{ name: string; url: string; events: WebhookEvent[]; secret: string; is_active: boolean }>
+    ) => {
+      await delay(300);
+      const existing = outgoingWebhooksStore.find((w) => w.id === id);
+      if (!existing) throw Object.assign(new Error("Outgoing webhook not found"), { status: 404 });
+      outgoingWebhooksStore = outgoingWebhooksStore.map((w) => (w.id === id ? { ...w, ...data } : w));
+      return ok(outgoingWebhooksStore.find((w) => w.id === id));
+    },
+    deleteOutgoing: async (id: string) => {
+      await delay(200);
+      outgoingWebhooksStore = outgoingWebhooksStore.filter((w) => w.id !== id);
+      return ok({ message: "Deleted" });
+    },
+    testOutgoing: async (id: string) => {
+      await delay(600);
+      const existing = outgoingWebhooksStore.find((w) => w.id === id);
+      if (!existing) throw Object.assign(new Error("Outgoing webhook not found"), { status: 404 });
+      outgoingWebhooksStore = outgoingWebhooksStore.map((w) =>
+        w.id === id ? { ...w, last_status: "200 OK" } : w
+      );
+      return ok({ status: "200 OK" });
     },
   },
 

@@ -1,5 +1,11 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
-import type { WorkflowNode, WorkflowEdge, ScheduleTargetType } from "@/types";
+import type {
+  WorkflowNode,
+  WorkflowEdge,
+  ScheduleTargetType,
+  IntegrationProvider,
+  WebhookEvent,
+} from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -280,6 +286,53 @@ export const api = {
     list: () => apiInstance.get("/api/v1/apikeys"),
     create: (name: string) => apiInstance.post("/api/v1/apikeys", { name }),
     revoke: (id: string) => apiInstance.delete(`/api/v1/apikeys/${id}`),
+  },
+
+  // Integrations (GitHub, Slack, Discord, Notion)
+  integrations: {
+    list: () => apiInstance.get("/api/v1/integrations"),
+    create: (data: {
+      provider: IntegrationProvider;
+      name: string;
+      credentials: Record<string, string>;
+      config?: Record<string, unknown>;
+    }) => apiInstance.post("/api/v1/integrations", data),
+    update: (
+      id: string,
+      data: Partial<{
+        name: string;
+        credentials: Record<string, string>;
+        config: Record<string, unknown>;
+      }>
+    ) => apiInstance.put(`/api/v1/integrations/${id}`, data),
+    delete: (id: string) => apiInstance.delete(`/api/v1/integrations/${id}`),
+    test: (id: string) => apiInstance.post(`/api/v1/integrations/${id}/test`),
+    action: (id: string, action: string, params: Record<string, unknown> = {}) =>
+      apiInstance.post(`/api/v1/integrations/${id}/action`, { action, params }),
+  },
+
+  // Webhooks (incoming triggers + outgoing event notifications)
+  webhooks: {
+    listTriggers: () => apiInstance.get("/api/v1/webhooks/triggers"),
+    createTrigger: (data: { name: string; workflow_id: string }) =>
+      apiInstance.post("/api/v1/webhooks/triggers", data),
+    deleteTrigger: (id: string) => apiInstance.delete(`/api/v1/webhooks/triggers/${id}`),
+    toggleTrigger: (id: string) => apiInstance.post(`/api/v1/webhooks/triggers/${id}/toggle`),
+    listOutgoing: () => apiInstance.get("/api/v1/webhooks/outgoing"),
+    createOutgoing: (data: { name: string; url: string; events: WebhookEvent[]; secret?: string }) =>
+      apiInstance.post("/api/v1/webhooks/outgoing", data),
+    updateOutgoing: (
+      id: string,
+      data: Partial<{
+        name: string;
+        url: string;
+        events: WebhookEvent[];
+        secret: string;
+        is_active: boolean;
+      }>
+    ) => apiInstance.put(`/api/v1/webhooks/outgoing/${id}`, data),
+    deleteOutgoing: (id: string) => apiInstance.delete(`/api/v1/webhooks/outgoing/${id}`),
+    testOutgoing: (id: string) => apiInstance.post(`/api/v1/webhooks/outgoing/${id}/test`),
   },
 
   // Utility

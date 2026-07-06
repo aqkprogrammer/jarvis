@@ -74,6 +74,13 @@ A production-ready, full-stack AI assistant platform built with FastAPI, Next.js
 - **Scheduled agents** — cron-style schedules ("summarise my inbox every weekday at 9am") targeting workflows or prompts, with run history and next-run preview
 - **User API keys** — generate `jrv_...` keys in Settings, call chat/RAG endpoints programmatically via `X-API-Key` header
 
+### Integrations
+- **GitHub** — connect with a PAT, browse repos, list open PRs, one-click AI PR summaries, create issues from JARVIS
+- **Slack & Discord** — send messages via bot token or webhook, quick-send panel
+- **Notion** — create pages from chat or workflows
+- **Incoming webhooks** — public `hooks/{token}` URLs that trigger workflows from any external system
+- **Outgoing webhooks** — HMAC-SHA256 signed event notifications (workflow.completed/failed, schedule.completed) to any URL
+
 ### Infrastructure
 - **Authentication** — JWT access + refresh tokens, bcrypt passwords
 - **Background jobs** — Celery + Redis with celery-redbeat scheduler
@@ -390,6 +397,10 @@ Key endpoint groups:
 | `GET/POST /api/v1/workflows` | Workflow CRUD + `POST /{id}/run` execution |
 | `GET/POST /api/v1/schedules` | Cron schedules + toggle + run-now |
 | `GET/POST /api/v1/apikeys` | User API key management (`X-API-Key` auth) |
+| `GET/POST /api/v1/integrations` | Integration CRUD + `POST /{id}/action` dispatch |
+| `GET/POST /api/v1/webhooks/triggers` | Incoming webhook trigger management |
+| `POST /api/v1/hooks/{token}` | Public webhook receiver (triggers workflows) |
+| `GET/POST /api/v1/webhooks/outgoing` | Outgoing webhook management |
 
 ---
 

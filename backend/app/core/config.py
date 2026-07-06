@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"  # development | production | test
     DEBUG: bool = True
     API_V1_STR: str = "/api/v1"
+    API_BASE_URL: str = "http://localhost:8000"  # public base URL, e.g. for webhook URLs
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production-use-secrets-generate-urandom-32"

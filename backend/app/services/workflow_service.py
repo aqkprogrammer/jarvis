@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.models.workflow import Workflow, WorkflowRun
+from app.services import webhook_service
 from app.services.ai_provider import AIProviderFactory, CompletionResult
 
 logger = get_logger(__name__)
@@ -235,4 +236,18 @@ async def execute_workflow(
     run.node_results = node_results
     run.finished_at = datetime.now(timezone.utc)
     await db.flush()
+
+    # Notify outgoing webhooks (fire-and-forget; never blocks or fails the run)
+    event = "workflow.completed" if run.status == "completed" else "workflow.failed"
+    webhook_service.fire_event_background(
+        workflow.user_id,
+        event,
+        {
+            "workflow_id": str(workflow.id),
+            "workflow_name": workflow.name,
+            "run_id": str(run.id),
+            "status": run.status,
+            "error": run.error,
+        },
+    )
     return run
