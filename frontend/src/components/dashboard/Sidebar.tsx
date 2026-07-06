@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Brain, CheckSquare, BarChart3, Settings,
-  ChevronLeft, ChevronRight, Cpu, Zap, User, LogOut, Bot
+  ChevronLeft, ChevronRight, Cpu, Zap, User, LogOut, Bot, FileText
 } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -13,6 +13,7 @@ import { cn } from "@/components/ui/button";
 const navItems = [
   { href: "/chat", icon: MessageSquare, label: "Chat" },
   { href: "/memory", icon: Brain, label: "Memory" },
+  { href: "/documents", icon: FileText, label: "Documents" },
   { href: "/tasks", icon: CheckSquare, label: "Tasks" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/agents", icon: Bot, label: "Agents" },

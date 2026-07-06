@@ -43,6 +43,7 @@ async def send_message(
                 temperature=payload.temperature or 0.7,
                 system_prompt=payload.system_prompt,
                 tools=payload.tools,
+                document_ids=payload.document_ids,
             )
             async for chunk in gen:
                 yield f"data: {json.dumps(chunk)}\n\n"
@@ -61,6 +62,7 @@ async def send_message(
         temperature=payload.temperature or 0.7,
         system_prompt=payload.system_prompt,
         tools=payload.tools,
+        document_ids=payload.document_ids,
     )
 
     msg = result["message"]

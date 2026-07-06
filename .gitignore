@@ -34,8 +34,8 @@ var/
 sdist/
 develop-eggs/
 .installed.cfg
-lib/
-lib64/
+/lib/
+/lib64/
 
 # Virtual environments
 .venv/
@@ -229,7 +229,8 @@ prometheus_data/
 grafana_data/
 
 # ---------------------------------------------------------------------------
-# Model weights (large binary files)
+# Model weights (large binary files) — root models/ dir only,
+# NOT backend/app/models (SQLAlchemy source code)
 # ---------------------------------------------------------------------------
 *.onnx
 *.pt
@@ -237,5 +238,5 @@ grafana_data/
 *.bin
 *.gguf
 *.safetensors
-models/
-!models/.gitkeep
+/models/
+!/models/.gitkeep

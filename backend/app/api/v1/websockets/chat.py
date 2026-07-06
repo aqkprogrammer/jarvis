@@ -77,6 +77,14 @@ async def ws_chat(websocket: WebSocket, conversation_id: int):
                     await websocket.send_json({"type": "error", "error": "Empty message"})
                     continue
 
+                # Optional RAG document scoping
+                document_ids = data.get("document_ids")
+                if not (
+                    isinstance(document_ids, list)
+                    and all(isinstance(d, str) for d in document_ids)
+                ):
+                    document_ids = None
+
                 # Stream AI response
                 async with AsyncSessionLocal() as db:
                     from app.services.chat_service import ChatService
@@ -88,6 +96,7 @@ async def ws_chat(websocket: WebSocket, conversation_id: int):
                             conversation_id=conversation_id,
                             provider_name=data.get("provider"),
                             model=data.get("model"),
+                            document_ids=document_ids,
                         )
                         async for chunk in gen:
                             await websocket.send_json(chunk)

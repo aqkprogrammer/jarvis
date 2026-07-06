@@ -13,14 +13,17 @@ class MessageCreate(BaseModel):
 
 
 class MessageResponse(BaseModel):
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
     id: int
     conversation_id: int
     role: str
     content: str
     tokens_used: Optional[int] = None
-    metadata_: Optional[Dict[str, Any]] = Field(None, alias="metadata_")
+    # ORM attribute is `metadata_`; the API contract (and demo mode) uses `meta`
+    metadata_: Optional[Dict[str, Any]] = Field(
+        None, alias="metadata_", serialization_alias="meta"
+    )
     created_at: datetime
 
 
@@ -54,6 +57,7 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = Field(None, ge=1, le=200_000)
     tools: Optional[List[Dict[str, Any]]] = None
     metadata: Optional[Dict[str, Any]] = None
+    document_ids: Optional[List[str]] = None  # RAG: restrict retrieval to these documents
 
 
 class UsageInfo(BaseModel):

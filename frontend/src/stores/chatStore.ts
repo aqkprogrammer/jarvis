@@ -6,7 +6,7 @@ import {
   Message,
   StreamingState,
 } from "@/types";
-import { api } from "@/lib/api";
+import { getApi, isDemoMode } from "@/lib/api";
 
 interface ChatState {
   conversations: ConversationSummary[];
@@ -25,7 +25,7 @@ interface ChatState {
   createConversation: (title?: string, model?: string) => Promise<Conversation>;
   updateConversation: (id: string, data: Partial<ConversationSummary>) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, documents?: Array<{ id: string; filename: string }>) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   appendStreamChunk: (messageId: string, chunk: string) => void;
   completeStreaming: (messageId: string, message: Message) => void;
@@ -58,9 +58,9 @@ export const useChatStore = create<ChatState>()(
     loadConversations: async () => {
       set((state) => { state.isLoadingConversations = true; });
       try {
-        const response = await api.conversations.list();
+        const response = await getApi().conversations.list();
         set((state) => {
-          state.conversations = response.data.data || response.data;
+          state.conversations = response.data.items || response.data.data || response.data;
           state.isLoadingConversations = false;
         });
       } catch (error) {
@@ -73,12 +73,12 @@ export const useChatStore = create<ChatState>()(
       set((state) => { state.isLoadingMessages = true; });
       try {
         const [convResponse, msgResponse] = await Promise.all([
-          api.conversations.get(id),
-          api.conversations.messages(id),
+          getApi().conversations.get(id),
+          getApi().conversations.messages(id),
         ]);
         set((state) => {
           state.currentConversation = convResponse.data;
-          state.messages = msgResponse.data.data || msgResponse.data;
+          state.messages = msgResponse.data.items || msgResponse.data.data || msgResponse.data;
           state.isLoadingMessages = false;
         });
       } catch (error) {
@@ -88,7 +88,7 @@ export const useChatStore = create<ChatState>()(
     },
 
     createConversation: async (title?: string, model?: string) => {
-      const response = await api.conversations.create({
+      const response = await getApi().conversations.create({
         title: title || "New Conversation",
         model: model || get().selectedModel,
       });
@@ -113,7 +113,7 @@ export const useChatStore = create<ChatState>()(
     },
 
     updateConversation: async (id: string, data: Partial<ConversationSummary>) => {
-      await api.conversations.update(id, data);
+      await getApi().conversations.update(id, data);
       set((state) => {
         const idx = state.conversations.findIndex((c: ConversationSummary) => c.id === id);
         if (idx !== -1) {
@@ -126,7 +126,7 @@ export const useChatStore = create<ChatState>()(
     },
 
     deleteConversation: async (id: string) => {
-      await api.conversations.delete(id);
+      await getApi().conversations.delete(id);
       set((state) => {
         state.conversations = state.conversations.filter((c: ConversationSummary) => c.id !== id);
         if (state.currentConversation?.id === id) {
@@ -136,10 +136,11 @@ export const useChatStore = create<ChatState>()(
       });
     },
 
-    sendMessage: async (content: string) => {
+    sendMessage: async (content: string, documents?: Array<{ id: string; filename: string }>) => {
       const { currentConversation, selectedModel } = get();
       if (!currentConversation) return;
 
+      const documentIds = documents && documents.length > 0 ? documents.map((d) => d.id) : undefined;
       const tempId = `temp-${Date.now()}`;
       const userMessage: Message = {
         id: tempId,
@@ -148,6 +149,8 @@ export const useChatStore = create<ChatState>()(
         content,
         status: "complete",
         created_at: new Date().toISOString(),
+        document_ids: documentIds,
+        attached_documents: documentIds ? documents : undefined,
       };
 
       set((state) => {
@@ -156,10 +159,11 @@ export const useChatStore = create<ChatState>()(
       });
 
       try {
-        const response = await api.messages.send(
+        const response = await getApi().messages.send(
           currentConversation.id,
           content,
-          selectedModel
+          selectedModel,
+          documentIds
         );
         set((state) => {
           const idx = state.messages.findIndex((m: Message) => m.id ===tempId);
@@ -168,6 +172,25 @@ export const useChatStore = create<ChatState>()(
           }
           state.isSending = false;
         });
+
+        // Demo mode has no WebSocket stream — poll once for the simulated
+        // assistant reply that mockApi pushes after a short delay.
+        if (isDemoMode()) {
+          const convId = currentConversation.id;
+          setTimeout(async () => {
+            try {
+              const resp = await getApi().conversations.messages(convId);
+              const items = resp.data.items || resp.data.data || resp.data;
+              set((state) => {
+                if (state.currentConversation?.id === convId && Array.isArray(items)) {
+                  state.messages = items;
+                }
+              });
+            } catch {
+              // best-effort refresh only
+            }
+          }, 1600);
+        }
       } catch (error) {
         set((state) => {
           const idx = state.messages.findIndex((m: Message) => m.id ===tempId);
@@ -183,7 +206,7 @@ export const useChatStore = create<ChatState>()(
     deleteMessage: async (messageId: string) => {
       const { currentConversation } = get();
       if (!currentConversation) return;
-      await api.messages.delete(currentConversation.id, messageId);
+      await getApi().messages.delete(currentConversation.id, messageId);
       set((state) => {
         state.messages = state.messages.filter((m: Message) => m.id !== messageId);
       });

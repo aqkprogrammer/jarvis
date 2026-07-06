@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     CELERY_TASK_TIME_LIMIT: int = 300
     CELERY_TASK_SOFT_TIME_LIMIT: int = 270
 
+    # ── Code Execution ────────────────────────────────────────────────────────
+    ENABLE_CODE_EXECUTION: bool = True
+
     # ── Feature Flags ─────────────────────────────────────────────────────────
     FEATURE_MEMORY_ENABLED: bool = True
     FEATURE_VOICE_ENABLED: bool = True

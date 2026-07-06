@@ -11,6 +11,7 @@ from app.core.logging import get_logger
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.services.ai_provider import AIProviderFactory, CompletionResult
+from app.services.document_service import search_documents
 from app.services.memory_service import MemoryService
 
 logger = get_logger(__name__)
@@ -124,6 +125,49 @@ class ChatService:
 
         return base
 
+    async def _retrieve_document_context(
+        self,
+        user_id: int,
+        user_query: str,
+        document_ids: Optional[List[str]],
+    ) -> tuple[List[Dict[str, Any]], Optional[str]]:
+        """RAG retrieval: return (results, context_block) for the given documents."""
+        if not document_ids:
+            return [], None
+        try:
+            results = await search_documents(
+                query=user_query, user_id=user_id, document_ids=document_ids, limit=5
+            )
+        except Exception as exc:
+            logger.warning("document_retrieval_failed", error=str(exc))
+            return [], None
+        if not results:
+            return [], None
+        excerpts = "\n\n".join(
+            f"[Source: {r['filename']}]\n{r['content']}" for r in results
+        )
+        context_block = (
+            "Relevant document excerpts:\n"
+            f"{excerpts}\n\n"
+            "When answering from these excerpts, cite the source filename."
+        )
+        return results, context_block
+
+    @staticmethod
+    def _retrieval_trace_step(
+        document_ids: Optional[List[str]],
+        retrieval_results: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        if not document_ids:
+            return None
+        if retrieval_results:
+            detail = "; ".join(
+                f"{r['filename']} (score {r['score']:.2f})" for r in retrieval_results
+            )
+        else:
+            detail = "No matching excerpts found in the selected documents"
+        return {"type": "retrieval", "label": "Document search", "detail": detail}
+
     def _messages_to_provider_format(self, messages: List[Message]) -> List[Dict[str, str]]:
         return [{"role": m.role, "content": m.content} for m in messages]
 
@@ -161,6 +205,7 @@ class ChatService:
         temperature: float = settings.DEFAULT_TEMPERATURE,
         system_prompt: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
+        document_ids: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         provider = AIProviderFactory.get(provider_name)
         conv = await self.get_or_create_conversation(user_id, conversation_id)
@@ -173,6 +218,13 @@ class ChatService:
 
         system = await self._build_system_prompt(user_id, system_prompt, user_message)
 
+        # RAG: retrieve relevant chunks from the selected documents
+        retrieval_results, doc_context = await self._retrieve_document_context(
+            user_id, user_message, document_ids
+        )
+        if doc_context:
+            system = f"{system}\n\n{doc_context}"
+
         result: CompletionResult = await provider.complete(
             messages=history,
             model=model,
@@ -182,13 +234,40 @@ class ChatService:
             tools=tools,
         )
 
+        # Reasoning trace (agent-generated messages can append richer steps later)
+        trace_steps: List[Dict[str, Any]] = []
+        retrieval_step = self._retrieval_trace_step(document_ids, retrieval_results)
+        if retrieval_step:
+            trace_steps.append(retrieval_step)
+        trace_steps.append(
+            {
+                "type": "thinking",
+                "label": "Model",
+                "detail": f"{result.model} via {provider.name}",
+            }
+        )
+        trace_steps.append(
+            {
+                "type": "thinking",
+                "label": "Token usage",
+                "detail": (
+                    f"input={result.input_tokens}, output={result.output_tokens}, "
+                    f"total={result.total_tokens}"
+                ),
+            }
+        )
+
         # Persist assistant reply
         assistant_msg = await self._save_message(
             conv.id,
             "assistant",
             result.content,
             tokens_used=result.total_tokens,
-            metadata={"model": result.model, "provider": provider.name},
+            metadata={
+                "model": result.model,
+                "provider": provider.name,
+                "steps": trace_steps,
+            },
         )
 
         # Auto-title conversation
@@ -230,6 +309,7 @@ class ChatService:
         temperature: float = settings.DEFAULT_TEMPERATURE,
         system_prompt: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
+        document_ids: Optional[List[str]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         provider = AIProviderFactory.get(provider_name)
         conv = await self.get_or_create_conversation(user_id, conversation_id)
@@ -238,6 +318,26 @@ class ChatService:
         history = self._messages_to_provider_format(conv.messages[:-1])
         history.append({"role": "user", "content": user_message})
         system = await self._build_system_prompt(user_id, system_prompt, user_message)
+
+        # RAG: retrieve relevant chunks from the selected documents
+        retrieval_results, doc_context = await self._retrieve_document_context(
+            user_id, user_message, document_ids
+        )
+        if doc_context:
+            system = f"{system}\n\n{doc_context}"
+
+        # Reasoning trace (token counts not available when streaming)
+        trace_steps: List[Dict[str, Any]] = []
+        retrieval_step = self._retrieval_trace_step(document_ids, retrieval_results)
+        if retrieval_step:
+            trace_steps.append(retrieval_step)
+        trace_steps.append(
+            {
+                "type": "thinking",
+                "label": "Model",
+                "detail": f"{model or settings.DEFAULT_MODEL} via {provider.name}",
+            }
+        )
 
         full_response: List[str] = []
 
@@ -259,7 +359,11 @@ class ChatService:
                 conv.id,
                 "assistant",
                 full_content,
-                metadata={"provider": provider.name},
+                metadata={
+                    "model": model or settings.DEFAULT_MODEL,
+                    "provider": provider.name,
+                    "steps": trace_steps,
+                },
             )
 
             if not conv.title or conv.title == "New Conversation":

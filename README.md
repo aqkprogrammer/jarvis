@@ -30,6 +30,10 @@ A production-ready, full-stack AI assistant platform built with FastAPI, Next.js
 - **Multi-provider LLM support** — Anthropic Claude (default), OpenAI GPT-4o, Groq, Google Gemini, Ollama (local)
 - **Streaming responses** via WebSocket for real-time token-by-token output
 - **Context-aware conversations** with full message history
+- **RAG document chat** — upload PDF/TXT/MD/CSV/DOCX, automatic chunking + embedding into Qdrant, attach documents to any chat message and get cited answers
+- **Artifacts panel** — preview HTML/SVG output from code blocks in a sandboxed side panel with copy/download
+- **Code execution sandbox** — run Python/JavaScript code blocks directly from chat with isolated subprocess execution, timeouts, and output capture
+- **Reasoning traces** — collapsible step-by-step trace (retrieval, model, token usage) on every assistant message
 
 ### Multi-Agent System
 | Agent | Role |
@@ -374,6 +378,10 @@ Key endpoint groups:
 | `GET /api/v1/agents` | Agent status |
 | `POST /api/v1/voice/transcribe` | STT upload |
 | `POST /api/v1/voice/synthesize` | TTS generation |
+| `POST /api/v1/documents/upload` | Upload document for RAG (PDF/TXT/MD/CSV/DOCX) |
+| `GET/DELETE /api/v1/documents` | List / delete documents |
+| `POST /api/v1/documents/search` | Semantic search over document chunks |
+| `POST /api/v1/execute` | Sandboxed Python/JavaScript execution |
 
 ---
 

@@ -24,6 +24,20 @@ export interface UserPreferences {
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 export type MessageStatus = "sending" | "streaming" | "complete" | "error";
 
+export type ReasoningStepType = "thinking" | "tool" | "retrieval";
+
+export interface ReasoningStep {
+  type: ReasoningStepType;
+  label: string;
+  detail: string;
+}
+
+export interface MessageMeta {
+  steps?: ReasoningStep[];
+  model?: string;
+  provider?: string;
+}
+
 export interface ToolCall {
   id: string;
   name: string;
@@ -56,6 +70,12 @@ export interface Message {
   created_at: string;
   updated_at?: string;
   metadata?: Record<string, unknown>;
+  /** IDs of documents attached to this message (RAG context) */
+  document_ids?: string[];
+  /** Resolved attachments for display (filename chips on the bubble) */
+  attached_documents?: Array<{ id: string; filename: string }>;
+  /** Reasoning trace + model info for assistant messages */
+  meta?: MessageMeta;
 }
 
 // ==================== CONVERSATION TYPES ====================
@@ -116,6 +136,48 @@ export interface MemorySearchResult {
   memory: Memory;
   score: number;
   highlights?: string[];
+}
+
+// ==================== DOCUMENT TYPES (RAG) ====================
+export type DocumentStatus = "processing" | "ready" | "failed";
+
+export interface Document {
+  id: string;
+  user_id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  status: DocumentStatus;
+  error?: string;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentSearchResult {
+  content: string;
+  document_id: string;
+  filename: string;
+  score: number;
+}
+
+// ==================== CODE EXECUTION TYPES ====================
+export interface ExecuteResult {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  duration_ms: number;
+  truncated: boolean;
+}
+
+// ==================== ARTIFACT TYPES ====================
+export type ArtifactType = "html" | "svg" | "markdown" | "code";
+
+export interface Artifact {
+  type: ArtifactType;
+  title: string;
+  content: string;
+  language?: string;
 }
 
 // ==================== TASK TYPES ====================

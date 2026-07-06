@@ -1,19 +1,22 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight,
-  Terminal, User, Bot, AlertCircle, Clock
+  Terminal, User, Bot, AlertCircle, Clock, Eye, Play, Loader2,
+  BrainCircuit, Brain, Wrench, FileSearch, FileText
 } from "lucide-react";
-import { Message, ToolCall } from "@/types";
+import { Message, MessageMeta, ToolCall, ExecuteResult, ReasoningStepType } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
+import { getApi } from "@/lib/api";
+import { useArtifactStore } from "@/stores/artifactStore";
 
 interface MessageBubbleProps {
   message: Message;
@@ -74,8 +77,25 @@ function ToolCallDisplay({ toolCall }: { toolCall: ToolCall }) {
   );
 }
 
+const PREVIEWABLE_LANGUAGES = new Set(["html", "svg", "xml"]);
+const RUNNABLE_LANGUAGES = new Set(["python", "py", "javascript", "js"]);
+
+function normalizeRunLanguage(language: string): string {
+  if (language === "py") return "python";
+  if (language === "js") return "javascript";
+  return language;
+}
+
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [execResult, setExecResult] = useState<ExecuteResult | null>(null);
+  const [outputOpen, setOutputOpen] = useState(true);
+  const openArtifact = useArtifactStore((s) => s.open);
+
+  const lang = (language || "").toLowerCase();
+  const canPreview = PREVIEWABLE_LANGUAGES.has(lang);
+  const canRun = RUNNABLE_LANGUAGES.has(lang);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -83,17 +103,74 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handlePreview = () => {
+    const isSvg = lang === "svg" || (lang === "xml" && code.toLowerCase().includes("<svg"));
+    openArtifact({
+      type: isSvg ? "svg" : "html",
+      title: `${(isSvg ? "svg" : "html").toUpperCase()} Preview`,
+      content: code,
+      language: lang,
+    });
+  };
+
+  const handleRun = async () => {
+    if (running) return;
+    setRunning(true);
+    try {
+      const response = await getApi().execute.run(normalizeRunLanguage(lang), code);
+      setExecResult(response.data as ExecuteResult);
+    } catch (error) {
+      setExecResult({
+        stdout: "",
+        stderr: (error as Error).message || "Execution failed",
+        exit_code: 1,
+        duration_ms: 0,
+        truncated: false,
+      });
+    } finally {
+      setRunning(false);
+      setOutputOpen(true);
+    }
+  };
+
   return (
     <div className="relative my-3 rounded-xl overflow-hidden border border-jarvis-border">
       <div className="flex items-center justify-between px-4 py-2 bg-jarvis-surface border-b border-jarvis-border">
         <span className="text-xs font-mono text-jarvis-text-muted">{language || "code"}</span>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 text-xs font-mono text-jarvis-text-muted hover:text-primary transition-colors"
-        >
-          {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? "Copied!" : "Copy"}
-        </button>
+        <div className="flex items-center gap-3">
+          {canPreview && (
+            <button
+              onClick={handlePreview}
+              className="flex items-center gap-1.5 text-xs font-mono text-jarvis-text-muted hover:text-primary transition-colors"
+              title="Preview in artifact panel"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Preview
+            </button>
+          )}
+          {canRun && (
+            <button
+              onClick={handleRun}
+              disabled={running}
+              className="flex items-center gap-1.5 text-xs font-mono text-jarvis-text-muted hover:text-emerald-400 transition-colors disabled:opacity-60"
+              title="Execute code"
+            >
+              {running ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+              ) : (
+                <Play className="w-3.5 h-3.5" />
+              )}
+              {running ? "Running..." : "Run"}
+            </button>
+          )}
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 text-xs font-mono text-jarvis-text-muted hover:text-primary transition-colors"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? "Copied!" : "Copy"}
+          </button>
+        </div>
       </div>
       <SyntaxHighlighter
         language={language}
@@ -111,6 +188,130 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
       >
         {code}
       </SyntaxHighlighter>
+
+      {/* Execution output console */}
+      {execResult && (
+        <div className="border-t border-jarvis-border bg-[#020810]">
+          <button
+            onClick={() => setOutputOpen(!outputOpen)}
+            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-primary/5 transition-colors"
+          >
+            <Terminal className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="text-[10px] font-mono font-semibold text-jarvis-text-muted uppercase tracking-wider">
+              Output
+            </span>
+            {outputOpen ? (
+              <ChevronDown className="w-3.5 h-3.5 text-jarvis-text-muted ml-auto" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-jarvis-text-muted ml-auto" />
+            )}
+          </button>
+          <AnimatePresence initial={false}>
+            {outputOpen && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="px-4 pb-3">
+                  {execResult.stdout && (
+                    <pre className="text-xs font-mono text-emerald-400 whitespace-pre-wrap leading-relaxed">
+                      {execResult.stdout}
+                    </pre>
+                  )}
+                  {execResult.stderr && (
+                    <pre className="text-xs font-mono text-red-400 whitespace-pre-wrap leading-relaxed mt-1">
+                      {execResult.stderr}
+                    </pre>
+                  )}
+                  {!execResult.stdout && !execResult.stderr && (
+                    <p className="text-xs font-mono text-jarvis-text-muted italic">(no output)</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-2 pt-2 border-t border-jarvis-border/50 text-[10px] font-mono text-jarvis-text-muted">
+                    <span className={cn(execResult.exit_code === 0 ? "text-emerald-400" : "text-red-400")}>
+                      exit {execResult.exit_code}
+                    </span>
+                    <span>{execResult.duration_ms}ms</span>
+                    {execResult.truncated && <span className="text-amber-400">output truncated</span>}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const reasoningStepConfig: Record<ReasoningStepType, { icon: typeof Brain; color: string }> = {
+  thinking: { icon: Brain, color: "text-violet-400" },
+  tool: { icon: Wrench, color: "text-amber-400" },
+  retrieval: { icon: FileSearch, color: "text-primary" },
+};
+
+function ReasoningTrace({ meta }: { meta: MessageMeta }) {
+  const [expanded, setExpanded] = useState(false);
+  const steps = meta.steps || [];
+  if (steps.length === 0) return null;
+
+  return (
+    <div className="mb-3 rounded-lg border border-primary/15 bg-primary/[0.03] overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-primary/5 transition-colors"
+      >
+        <BrainCircuit className="w-3.5 h-3.5 text-primary shrink-0" />
+        <span className="text-[10px] font-mono font-semibold text-primary uppercase tracking-wider">
+          Reasoning
+        </span>
+        <span className="text-[10px] font-mono text-jarvis-text-muted">
+          {steps.length} step{steps.length === 1 ? "" : "s"}
+        </span>
+        {(meta.model || meta.provider) && (
+          <span className="text-[10px] font-mono text-jarvis-text-muted/60 ml-auto hidden sm:inline truncate">
+            {[meta.model, meta.provider].filter(Boolean).join(" · ")}
+          </span>
+        )}
+        {expanded ? (
+          <ChevronDown className={cn("w-3.5 h-3.5 text-jarvis-text-muted shrink-0", !meta.model && !meta.provider && "ml-auto")} />
+        ) : (
+          <ChevronRight className={cn("w-3.5 h-3.5 text-jarvis-text-muted shrink-0", !meta.model && !meta.provider && "ml-auto")} />
+        )}
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 pb-3 pt-1">
+              <div className="ml-1.5 border-l border-primary/30 pl-3 space-y-3">
+                {steps.map((step, i) => {
+                  const config = reasoningStepConfig[step.type];
+                  const StepIcon = config.icon;
+                  return (
+                    <div key={i} className="flex items-start gap-2">
+                      <StepIcon className={cn("w-3.5 h-3.5 mt-0.5 shrink-0", config.color)} />
+                      <div className="min-w-0">
+                        <p className="text-xs font-mono font-semibold text-jarvis-text leading-snug">
+                          {step.label}
+                        </p>
+                        <p className="text-xs font-mono text-jarvis-text-muted mt-0.5 leading-relaxed">
+                          {step.detail}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -128,6 +329,9 @@ export function MessageBubble({ message, onDelete, onRetry, isStreaming }: Messa
         .join('\n');
   const content = textContent;
   const toolCalls = message.tool_calls || [];
+  const attachments =
+    message.attached_documents ??
+    (message.document_ids || []).map((id) => ({ id, filename: id }));
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content);
@@ -177,6 +381,27 @@ export function MessageBubble({ message, onDelete, onRetry, isStreaming }: Messa
             <div className="flex items-center gap-2 text-red-400 text-xs font-mono mb-2 pb-2 border-b border-red-500/20">
               <AlertCircle className="w-3.5 h-3.5" />
               <span>Error occurred</span>
+            </div>
+          )}
+
+          {/* Reasoning trace (assistant messages) */}
+          {!isUser && message.meta?.steps && message.meta.steps.length > 0 && (
+            <ReasoningTrace meta={message.meta} />
+          )}
+
+          {/* Attached document chips */}
+          {attachments.length > 0 && (
+            <div className={cn("flex flex-wrap gap-1.5", (content || toolCalls.length > 0) && "mb-2")}>
+              {attachments.map((doc) => (
+                <span
+                  key={doc.id}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-primary/5 border border-primary/20 text-primary/80"
+                  title={doc.filename}
+                >
+                  <FileText className="w-2.5 h-2.5 shrink-0" />
+                  <span className="max-w-40 truncate">{doc.filename}</span>
+                </span>
+              ))}
             </div>
           )}
 

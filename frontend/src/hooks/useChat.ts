@@ -95,7 +95,7 @@ export function useChat(conversationId?: string) {
   }, []);
 
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, documents?: Array<{ id: string; filename: string }>) => {
       if (!content.trim() || isSending || streaming.isStreaming) return;
 
       let convId = currentConversation?.id;
@@ -105,7 +105,7 @@ export function useChat(conversationId?: string) {
       }
 
       try {
-        await sendMessage(content);
+        await sendMessage(content, documents);
       } catch (error) {
         addNotification("error", "Send Failed", (error as Error).message);
       }
