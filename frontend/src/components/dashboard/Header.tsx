@@ -5,9 +5,51 @@ import { motion } from "framer-motion";
 import { Bell, Search, Zap, Wifi, WifiOff, User, Settings, LogOut } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+
+const MAX_PRESENCE_AVATARS = 4;
+
+/** Overlapping avatar circles of workspace members currently online. */
+function PresenceStrip() {
+  const onlineUsers = useWorkspaceStore((s) => s.onlineUsers);
+
+  if (onlineUsers.length === 0) return null;
+
+  const visible = onlineUsers.slice(0, MAX_PRESENCE_AVATARS);
+  const overflow = onlineUsers.length - visible.length;
+  const names = onlineUsers.map((u) => u.username).join(", ");
+
+  return (
+    <div
+      className="flex items-center gap-2 px-2 py-1 rounded-lg glass border border-jarvis-border"
+      title={`Online: ${names}`}
+    >
+      <div className="flex items-center -space-x-2">
+        {visible.map((u) => (
+          <div
+            key={u.user_id}
+            className="w-6 h-6 rounded-full bg-primary/15 border-2 border-jarvis-surface ring-1 ring-primary/40 flex items-center justify-center"
+          >
+            <span className="text-[10px] font-mono font-bold text-primary uppercase leading-none">
+              {u.username.charAt(0)}
+            </span>
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div className="w-6 h-6 rounded-full bg-jarvis-surface border-2 border-jarvis-surface ring-1 ring-jarvis-border flex items-center justify-center">
+            <span className="text-[9px] font-mono text-jarvis-text-muted leading-none">
+              +{overflow}
+            </span>
+          </div>
+        )}
+      </div>
+      <span className="w-1.5 h-1.5 rounded-full bg-jarvis-success animate-pulse" />
+    </div>
+  );
+}
 
 interface HeaderProps {
   title: string;
@@ -55,6 +97,9 @@ export function Header({ title, subtitle }: HeaderProps) {
             className="jarvis-input w-full pl-9 py-2 text-sm"
           />
         </div>
+
+        {/* Workspace presence */}
+        <PresenceStrip />
 
         {/* Connection status */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass border border-jarvis-border">

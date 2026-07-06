@@ -3,13 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.models.conversation import Conversation
 from app.models.message import Message
+from app.models.workspace import Workspace, WorkspaceMember
 from app.services.ai_provider import AIProviderFactory, CompletionResult
 from app.services.document_service import search_documents
 from app.services.memory_service import MemoryService
@@ -53,9 +54,25 @@ class ChatService:
     async def list_conversations(
         self, user_id: int, limit: int = 50, offset: int = 0
     ) -> List[Conversation]:
+        """The user's own conversations plus ones shared to their workspaces."""
+        member_ws_ids = (
+            select(WorkspaceMember.workspace_id)
+            .where(WorkspaceMember.user_id == user_id)
+            .scalar_subquery()
+        )
+        owned_ws_ids = (
+            select(Workspace.id).where(Workspace.owner_id == user_id).scalar_subquery()
+        )
         result = await self._db.execute(
             select(Conversation)
-            .where(Conversation.user_id == user_id, Conversation.is_archived == False)
+            .where(
+                or_(
+                    Conversation.user_id == user_id,
+                    Conversation.workspace_id.in_(member_ws_ids),
+                    Conversation.workspace_id.in_(owned_ws_ids),
+                ),
+                Conversation.is_archived == False,
+            )
             .order_by(Conversation.updated_at.desc())
             .offset(offset)
             .limit(limit)

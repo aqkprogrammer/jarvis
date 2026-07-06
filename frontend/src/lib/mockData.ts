@@ -16,6 +16,11 @@ import type {
   PRSummary,
   WebhookTrigger,
   OutgoingWebhook,
+  Workspace,
+  WorkspaceMember,
+  WorkspaceInvite,
+  SharedConversation,
+  WorkspacePresenceUser,
 } from "@/types";
 
 // ─── Demo credentials ────────────────────────────────────────────────────────
@@ -628,6 +633,63 @@ export const DEMO_OUTGOING_WEBHOOKS: OutgoingWebhook[] = [
     created_at: "2026-06-22T16:00:00Z",
   },
 ];
+
+// ─── Workspaces (team collaboration) ──────────────────────────────────────────
+export const DEMO_WORKSPACE: Workspace = {
+  id: "ws-001",
+  name: "JARVIS Team",
+  owner_id: DEMO_USER.id,
+  member_count: 4,
+  my_role: "admin",
+  created_at: "2026-05-01T09:00:00Z",
+  updated_at: "2026-07-05T16:20:00Z",
+};
+
+export const DEMO_WORKSPACE_MEMBERS: Record<string, WorkspaceMember[]> = {
+  "ws-001": [
+    { user_id: DEMO_USER.id, username: DEMO_USER.username, email: DEMO_USER.email, role: "admin", joined_at: "2026-05-01T09:00:00Z" },
+    { user_id: "ws-user-002", username: "tony", email: "tony@stark.io", role: "admin", joined_at: "2026-05-02T10:15:00Z" },
+    { user_id: "ws-user-003", username: "pepper", email: "pepper@stark.io", role: "member", joined_at: "2026-05-03T08:40:00Z" },
+    { user_id: "ws-user-004", username: "happy", email: "happy@stark.io", role: "member", joined_at: "2026-05-10T14:05:00Z" },
+  ],
+};
+
+export const DEMO_WORKSPACE_INVITES: Record<string, WorkspaceInvite[]> = {
+  "ws-001": [
+    {
+      id: "wsinv-001",
+      email: "rhodey@stark.io",
+      role: "member",
+      token: "wsinv_demo_7f3a91c2d8b4",
+      invite_url: "http://localhost:3000/workspace/invite?token=wsinv_demo_7f3a91c2d8b4",
+      expires_at: "2026-07-10T12:00:00Z",
+      created_at: "2026-07-03T12:00:00Z",
+    },
+  ],
+};
+
+// Links an existing demo conversation (conv-001) into the demo workspace
+export const DEMO_SHARED_CONVERSATIONS: Record<string, SharedConversation[]> = {
+  "ws-001": [
+    {
+      id: "conv-001",
+      title: "Arc Reactor Efficiency Analysis",
+      user_id: DEMO_USER.id,
+      updated_at: "2026-06-27T10:30:00Z",
+    },
+  ],
+};
+
+// Static presence snapshot used in demo mode (2 of the 4 members online, incl. the demo user)
+export const DEMO_PRESENCE_USERS: WorkspacePresenceUser[] = [
+  { user_id: DEMO_USER.id, username: DEMO_USER.username, connected_at: "2026-07-06T08:00:00Z" },
+  { user_id: "ws-user-003", username: "pepper", connected_at: "2026-07-06T08:12:00Z" },
+];
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+// Fake VAPID public key (base64url) — only used to satisfy the demo flow
+export const DEMO_VAPID_PUBLIC_KEY =
+  "BDemoVapidPublicKey_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab";
 
 // ─── Canned JARVIS responses for demo chat ────────────────────────────────────
 export const DEMO_RESPONSES = [

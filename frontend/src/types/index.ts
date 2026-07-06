@@ -538,3 +538,64 @@ export interface OutgoingWebhook {
   last_status?: string;
   created_at: string;
 }
+
+// ==================== WORKSPACE TYPES ====================
+export type WorkspaceRole = "admin" | "member";
+
+export interface Workspace {
+  id: string;
+  name: string;
+  owner_id: string;
+  member_count: number;
+  my_role: WorkspaceRole;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMember {
+  user_id: string;
+  username: string;
+  email: string;
+  role: WorkspaceRole;
+  joined_at: string;
+}
+
+export interface WorkspaceInvite {
+  id: string;
+  email: string;
+  role: WorkspaceRole;
+  token: string;
+  invite_url: string;
+  expires_at: string;
+  created_at: string;
+}
+
+/** Conversation shared into a workspace (subset returned by the workspace API). */
+export interface SharedConversation {
+  id: string;
+  title: string;
+  user_id: string;
+  updated_at: string;
+}
+
+/** A user currently connected to the workspace presence channel. */
+export interface WorkspacePresenceUser {
+  user_id: string;
+  username: string;
+  connected_at: string;
+}
+
+// ==================== PUSH NOTIFICATION TYPES ====================
+export interface PushKeys {
+  p256dh: string;
+  auth: string;
+}
+
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  keys: PushKeys;
+}
+
+export interface PushVapidKey {
+  key: string;
+}

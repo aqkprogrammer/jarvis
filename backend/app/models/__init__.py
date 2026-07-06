@@ -12,10 +12,13 @@ from app.models.schedule import Schedule
 from app.models.api_key import ApiKey
 from app.models.integration import Integration
 from app.models.webhook import OutgoingWebhook, WebhookTrigger
+from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
+from app.models.push_subscription import PushSubscription
 
 __all__ = [
     "User", "Conversation", "Message", "Memory", "Task", "Plugin", "AuditLog", "RefreshToken",
     "Document", "DocumentChunk",
     "Workflow", "WorkflowRun", "Schedule", "ApiKey",
     "Integration", "WebhookTrigger", "OutgoingWebhook",
+    "Workspace", "WorkspaceMember", "WorkspaceInvite", "PushSubscription",
 ]

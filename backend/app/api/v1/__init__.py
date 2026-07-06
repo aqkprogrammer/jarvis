@@ -13,6 +13,8 @@ from app.api.v1.endpoints import (
     apikeys,
     integrations,
     webhooks,
+    workspaces,
+    push,
 )
 
 api_router = APIRouter()
@@ -32,3 +34,5 @@ api_router.include_router(integrations.router, prefix="/integrations", tags=["in
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 # Public webhook receiver: no auth, the unguessable token is the secret.
 api_router.include_router(webhooks.public_router, prefix="/hooks", tags=["webhooks"])
+api_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])
+api_router.include_router(push.router, prefix="/push", tags=["push"])

@@ -15,7 +15,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     resource_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    # `metadata` is reserved by SQLAlchemy Declarative; keep the column name
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

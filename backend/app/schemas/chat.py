@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +42,9 @@ class ConversationResponse(BaseModel):
     title: Optional[str] = None
     session_id: Optional[str] = None
     is_archived: bool
+    # Workspace sharing: set when the conversation is shared into a workspace
+    workspace_id: Optional[UUID] = None
+    shared: bool = False
     created_at: datetime
     updated_at: datetime
     messages: List[MessageResponse] = []

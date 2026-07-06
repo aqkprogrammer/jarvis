@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     # ── Code Execution ────────────────────────────────────────────────────────
     ENABLE_CODE_EXECUTION: bool = True
 
+    # ── Web Push (VAPID) ──────────────────────────────────────────────────────
+    # generate with: npx web-push generate-vapid-keys
+    VAPID_PUBLIC_KEY: Optional[str] = None
+    VAPID_PRIVATE_KEY: Optional[str] = None
+
     # ── Feature Flags ─────────────────────────────────────────────────────────
     FEATURE_MEMORY_ENABLED: bool = True
     FEATURE_VOICE_ENABLED: bool = True

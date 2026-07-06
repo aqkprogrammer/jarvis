@@ -24,6 +24,11 @@ import {
   DEMO_GITHUB_PRS,
   DEMO_WEBHOOK_TRIGGERS,
   DEMO_OUTGOING_WEBHOOKS,
+  DEMO_WORKSPACE,
+  DEMO_WORKSPACE_MEMBERS,
+  DEMO_WORKSPACE_INVITES,
+  DEMO_SHARED_CONVERSATIONS,
+  DEMO_VAPID_PUBLIC_KEY,
   buildDemoPRSummary,
   getRandomDemoResponse,
 } from "./mockData";
@@ -32,6 +37,8 @@ import type {
   Workflow, WorkflowEdge, WorkflowNode, WorkflowRun, NodeResult,
   Schedule, ScheduleTargetType, ApiKey, ApiKeyCreated,
   Integration, IntegrationProvider, WebhookTrigger, OutgoingWebhook, WebhookEvent,
+  Workspace, WorkspaceMember, WorkspaceInvite, WorkspaceRole,
+  SharedConversation, PushSubscriptionPayload,
 } from "@/types";
 
 // Simulates realistic network latency
@@ -53,6 +60,11 @@ let apiKeysStore: ApiKey[] = JSON.parse(JSON.stringify(DEMO_API_KEYS));
 let integrationsStore: Integration[] = JSON.parse(JSON.stringify(DEMO_INTEGRATIONS));
 let webhookTriggersStore: WebhookTrigger[] = JSON.parse(JSON.stringify(DEMO_WEBHOOK_TRIGGERS));
 let outgoingWebhooksStore: OutgoingWebhook[] = JSON.parse(JSON.stringify(DEMO_OUTGOING_WEBHOOKS));
+let workspacesStore: Workspace[] = JSON.parse(JSON.stringify([DEMO_WORKSPACE]));
+const workspaceMembersStore: Record<string, WorkspaceMember[]> = JSON.parse(JSON.stringify(DEMO_WORKSPACE_MEMBERS));
+const workspaceInvitesStore: Record<string, WorkspaceInvite[]> = JSON.parse(JSON.stringify(DEMO_WORKSPACE_INVITES));
+const sharedConversationsStore: Record<string, SharedConversation[]> = JSON.parse(JSON.stringify(DEMO_SHARED_CONVERSATIONS));
+let pushSubscriptionsStore: PushSubscriptionPayload[] = [];
 
 // Walks the workflow graph in edge order and fabricates per-node results.
 function simulateWorkflowRun(workflow: Workflow, input: string): WorkflowRun {
@@ -952,6 +964,157 @@ export const mockApi = {
         w.id === id ? { ...w, last_status: "200 OK" } : w
       );
       return ok({ status: "200 OK" });
+    },
+  },
+
+  workspaces: {
+    list: async () => {
+      await delay(300);
+      return ok(workspacesStore);
+    },
+    create: async (data: { name: string }) => {
+      await delay(400);
+      const now = new Date().toISOString();
+      const ws: Workspace = {
+        id: `ws-${Date.now()}`,
+        name: data.name,
+        owner_id: DEMO_USER.id,
+        member_count: 1,
+        my_role: "admin",
+        created_at: now,
+        updated_at: now,
+      };
+      workspacesStore = [...workspacesStore, ws];
+      workspaceMembersStore[ws.id] = [
+        { user_id: DEMO_USER.id, username: DEMO_USER.username, email: DEMO_USER.email, role: "admin", joined_at: now },
+      ];
+      workspaceInvitesStore[ws.id] = [];
+      sharedConversationsStore[ws.id] = [];
+      return ok(ws);
+    },
+    update: async (id: string, data: { name: string }) => {
+      await delay(300);
+      const existing = workspacesStore.find((w) => w.id === id);
+      if (!existing) throw Object.assign(new Error("Workspace not found"), { status: 404 });
+      workspacesStore = workspacesStore.map((w) =>
+        w.id === id ? { ...w, name: data.name, updated_at: new Date().toISOString() } : w
+      );
+      return ok(workspacesStore.find((w) => w.id === id));
+    },
+    delete: async (id: string) => {
+      await delay(300);
+      workspacesStore = workspacesStore.filter((w) => w.id !== id);
+      delete workspaceMembersStore[id];
+      delete workspaceInvitesStore[id];
+      delete sharedConversationsStore[id];
+      return ok({ message: "Deleted" });
+    },
+    members: async (id: string) => {
+      await delay(250);
+      return ok(workspaceMembersStore[id] ?? []);
+    },
+    removeMember: async (id: string, userId: string) => {
+      await delay(250);
+      workspaceMembersStore[id] = (workspaceMembersStore[id] ?? []).filter((m) => m.user_id !== userId);
+      workspacesStore = workspacesStore.map((w) =>
+        w.id === id ? { ...w, member_count: (workspaceMembersStore[id] ?? []).length, updated_at: new Date().toISOString() } : w
+      );
+      return ok({ message: "Removed" });
+    },
+    setRole: async (id: string, userId: string, role: WorkspaceRole) => {
+      await delay(250);
+      workspaceMembersStore[id] = (workspaceMembersStore[id] ?? []).map((m) =>
+        m.user_id === userId ? { ...m, role } : m
+      );
+      return ok(workspaceMembersStore[id]?.find((m) => m.user_id === userId));
+    },
+    createInvite: async (id: string, data: { email: string; role: WorkspaceRole }) => {
+      await delay(400);
+      const token = `wsinv_demo_${Math.random().toString(36).slice(2, 14)}`;
+      const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+      const invite: WorkspaceInvite = {
+        id: `wsinv-${Date.now()}`,
+        email: data.email,
+        role: data.role,
+        token,
+        invite_url: `${origin}/workspace/invite?token=${token}`,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        created_at: new Date().toISOString(),
+      };
+      workspaceInvitesStore[id] = [invite, ...(workspaceInvitesStore[id] ?? [])];
+      return ok(invite);
+    },
+    listInvites: async (id: string) => {
+      await delay(250);
+      return ok(workspaceInvitesStore[id] ?? []);
+    },
+    revokeInvite: async (id: string, inviteId: string) => {
+      await delay(250);
+      workspaceInvitesStore[id] = (workspaceInvitesStore[id] ?? []).filter((i) => i.id !== inviteId);
+      return ok({ message: "Revoked" });
+    },
+    acceptInvite: async (token: string) => {
+      await delay(400);
+      for (const ws of workspacesStore) {
+        const invite = (workspaceInvitesStore[ws.id] ?? []).find((i) => i.token === token);
+        if (invite) {
+          workspaceInvitesStore[ws.id] = (workspaceInvitesStore[ws.id] ?? []).filter((i) => i.token !== token);
+          const members = workspaceMembersStore[ws.id] ?? [];
+          if (!members.some((m) => m.user_id === DEMO_USER.id)) {
+            workspaceMembersStore[ws.id] = [
+              ...members,
+              { user_id: DEMO_USER.id, username: DEMO_USER.username, email: DEMO_USER.email, role: invite.role, joined_at: new Date().toISOString() },
+            ];
+            workspacesStore = workspacesStore.map((w) =>
+              w.id === ws.id ? { ...w, member_count: (workspaceMembersStore[ws.id] ?? []).length } : w
+            );
+          }
+          return ok(workspacesStore.find((w) => w.id === ws.id));
+        }
+      }
+      throw Object.assign(new Error("Invalid or expired invite token"), { status: 404 });
+    },
+    shareConversation: async (id: string, conversationId: string) => {
+      await delay(300);
+      const conv = conversations.find((c) => c.id === conversationId);
+      if (!conv) throw Object.assign(new Error("Conversation not found"), { status: 404 });
+      const shared = sharedConversationsStore[id] ?? [];
+      if (!shared.some((s) => s.id === conversationId)) {
+        sharedConversationsStore[id] = [
+          { id: conv.id, title: conv.title, user_id: DEMO_USER.id, updated_at: conv.last_message_at ?? conv.created_at },
+          ...shared,
+        ];
+      }
+      return ok({ message: "Shared" });
+    },
+    unshareConversation: async (id: string, conversationId: string) => {
+      await delay(300);
+      sharedConversationsStore[id] = (sharedConversationsStore[id] ?? []).filter((s) => s.id !== conversationId);
+      return ok({ message: "Unshared" });
+    },
+    sharedConversations: async (id: string) => {
+      await delay(250);
+      return ok(sharedConversationsStore[id] ?? []);
+    },
+  },
+
+  push: {
+    vapidKey: async () => {
+      await delay(150);
+      return ok({ key: DEMO_VAPID_PUBLIC_KEY });
+    },
+    subscribe: async (data: PushSubscriptionPayload) => {
+      await delay(300);
+      pushSubscriptionsStore = [
+        ...pushSubscriptionsStore.filter((s) => s.endpoint !== data.endpoint),
+        data,
+      ];
+      return ok({ message: "Subscribed" });
+    },
+    unsubscribe: async (endpoint: string) => {
+      await delay(300);
+      pushSubscriptionsStore = pushSubscriptionsStore.filter((s) => s.endpoint !== endpoint);
+      return ok({ message: "Unsubscribed" });
     },
   },
 

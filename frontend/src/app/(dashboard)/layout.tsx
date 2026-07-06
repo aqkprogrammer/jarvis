@@ -6,6 +6,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { Sidebar } from "@/components/dashboard/Sidebar";
 import { DemoBanner } from "@/components/dashboard/DemoBanner";
 import { useUIStore } from "@/stores/uiStore";
+import { useWorkspaceStore } from "@/stores/workspaceStore";
+import { usePresence } from "@/hooks/usePresence";
 
 export default function DashboardLayout({
   children,
@@ -14,13 +16,23 @@ export default function DashboardLayout({
 }) {
   const { isAuthenticated, isLoading } = useAuthStore();
   const { sidebarOpen } = useUIStore();
+  const loadWorkspaces = useWorkspaceStore((s) => s.load);
   const router = useRouter();
+
+  // Presence stays alive across dashboard pages once an active workspace exists
+  usePresence();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push("/");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadWorkspaces().catch(() => {});
+    }
+  }, [isAuthenticated, loadWorkspaces]);
 
   if (isLoading) {
     return (

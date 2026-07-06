@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -25,7 +25,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { getApi } from '@/lib/api';
-import type { ApiKey, ApiKeyCreated } from '@/types';
+import { useUIStore } from '@/stores/uiStore';
+import type { ApiKey, ApiKeyCreated, PushVapidKey } from '@/types';
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
@@ -316,9 +317,165 @@ function MemorySection() {
   );
 }
 
+// ─── Web push opt-in ──────────────────────────────────────────────────────────
+
+const PUSH_ENABLED_KEY = 'jarvis-push-enabled';
+const DEMO_PUSH_ENDPOINT = 'https://demo.push.jarvis/subscription-001';
+
+/** Converts a base64url VAPID public key into the Uint8Array pushManager expects. */
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  // Explicit ArrayBuffer keeps the type BufferSource-compatible (not ArrayBufferLike)
+  const outputArray = new Uint8Array(new ArrayBuffer(rawData.length));
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function PushNotificationsToggle() {
+  const { isDemoMode, addNotification } = useUIStore();
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // Read persisted opt-in after mount (avoids SSR/localStorage hydration mismatch)
+  useEffect(() => {
+    try {
+      setEnabled(localStorage.getItem(PUSH_ENABLED_KEY) === 'true');
+    } catch {
+      // localStorage unavailable — leave disabled
+    }
+  }, []);
+
+  const persist = (value: boolean) => {
+    setEnabled(value);
+    try {
+      localStorage.setItem(PUSH_ENABLED_KEY, String(value));
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const enable = async () => {
+    // Demo mode: simulate a successful subscription — no real permission prompt
+    if (isDemoMode) {
+      await getApi().push.subscribe({
+        endpoint: DEMO_PUSH_ENDPOINT,
+        keys: { p256dh: 'demo-p256dh-key', auth: 'demo-auth-secret' },
+      });
+      persist(true);
+      addNotification('success', 'Push Enabled', 'Demo mode: push subscription simulated');
+      return;
+    }
+
+    if (
+      !('Notification' in window) ||
+      !('serviceWorker' in navigator) ||
+      !('PushManager' in window)
+    ) {
+      throw new Error('Push notifications are not supported in this browser');
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      throw new Error('Notification permission was denied');
+    }
+
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      throw new Error('Service worker not registered — push requires a production build');
+    }
+
+    const vapidResponse = await getApi().push.vapidKey();
+    const { key } = vapidResponse.data as PushVapidKey;
+
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(key),
+    });
+
+    const json = subscription.toJSON();
+    const p256dh = json.keys?.p256dh;
+    const auth = json.keys?.auth;
+    if (!json.endpoint || !p256dh || !auth) {
+      throw new Error('Browser returned an incomplete push subscription');
+    }
+
+    await getApi().push.subscribe({ endpoint: json.endpoint, keys: { p256dh, auth } });
+    persist(true);
+    addNotification('success', 'Push Enabled', 'JARVIS can now send push notifications');
+  };
+
+  const disable = async () => {
+    if (isDemoMode) {
+      await getApi().push.unsubscribe(DEMO_PUSH_ENDPOINT);
+    } else if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) {
+        try {
+          await getApi().push.unsubscribe(subscription.endpoint);
+        } catch {
+          // Backend cleanup failed — still unsubscribe locally
+        }
+        await subscription.unsubscribe();
+      }
+    }
+    persist(false);
+    addNotification('info', 'Push Disabled', 'Push notifications turned off');
+  };
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (enabled) {
+        await disable();
+      } else {
+        await enable();
+      }
+    } catch (error) {
+      addNotification('error', 'Push Notifications', (error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between py-1">
+      <div>
+        <p className="text-sm text-slate-200">Enable push notifications</p>
+        <p className="text-xs text-slate-500">
+          Browser push via service worker, even when the tab is closed
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        {busy && <Loader2 size={14} className="animate-spin text-cyan-400" />}
+        <button
+          onClick={toggle}
+          disabled={busy}
+          className={`w-11 h-6 rounded-full transition-colors disabled:opacity-60 ${
+            enabled ? 'bg-cyan-500' : 'bg-slate-700'
+          }`}
+        >
+          <span
+            className={`block w-4 h-4 bg-white rounded-full mx-1 transition-transform ${
+              enabled ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NotificationsSection() {
   return (
     <div className="space-y-4">
+      <PushNotificationsToggle />
+      <div className="border-t border-slate-800" />
       <ToggleItem label="Task completions" sublabel="Notify when an agent finishes a task" defaultOn={true} />
       <ToggleItem label="Memory milestones" sublabel="Alert when memory capacity is near limit" defaultOn={true} />
       <ToggleItem label="System alerts" sublabel="Critical errors and warnings" defaultOn={true} />

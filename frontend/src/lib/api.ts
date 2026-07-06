@@ -5,6 +5,8 @@ import type {
   ScheduleTargetType,
   IntegrationProvider,
   WebhookEvent,
+  WorkspaceRole,
+  PushSubscriptionPayload,
 } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -333,6 +335,46 @@ export const api = {
     ) => apiInstance.put(`/api/v1/webhooks/outgoing/${id}`, data),
     deleteOutgoing: (id: string) => apiInstance.delete(`/api/v1/webhooks/outgoing/${id}`),
     testOutgoing: (id: string) => apiInstance.post(`/api/v1/webhooks/outgoing/${id}/test`),
+  },
+
+  // Workspaces (team collaboration)
+  workspaces: {
+    list: () => apiInstance.get("/api/v1/workspaces"),
+    create: (data: { name: string }) => apiInstance.post("/api/v1/workspaces", data),
+    update: (id: string, data: { name: string }) =>
+      apiInstance.put(`/api/v1/workspaces/${id}`, data),
+    delete: (id: string) => apiInstance.delete(`/api/v1/workspaces/${id}`),
+    members: (id: string) => apiInstance.get(`/api/v1/workspaces/${id}/members`),
+    removeMember: (id: string, userId: string) =>
+      apiInstance.delete(`/api/v1/workspaces/${id}/members/${userId}`),
+    setRole: (id: string, userId: string, role: WorkspaceRole) =>
+      apiInstance.put(`/api/v1/workspaces/${id}/members/${userId}`, { role }),
+    createInvite: (id: string, data: { email: string; role: WorkspaceRole }) =>
+      apiInstance.post(`/api/v1/workspaces/${id}/invites`, data),
+    listInvites: (id: string) => apiInstance.get(`/api/v1/workspaces/${id}/invites`),
+    revokeInvite: (id: string, inviteId: string) =>
+      apiInstance.delete(`/api/v1/workspaces/${id}/invites/${inviteId}`),
+    acceptInvite: (token: string) =>
+      apiInstance.post("/api/v1/workspaces/invites/accept", { token }),
+    shareConversation: (id: string, conversationId: string) =>
+      apiInstance.post(`/api/v1/workspaces/${id}/share-conversation`, {
+        conversation_id: conversationId,
+      }),
+    unshareConversation: (id: string, conversationId: string) =>
+      apiInstance.post(`/api/v1/workspaces/${id}/unshare-conversation`, {
+        conversation_id: conversationId,
+      }),
+    sharedConversations: (id: string) =>
+      apiInstance.get(`/api/v1/workspaces/${id}/conversations`),
+  },
+
+  // Web push notifications
+  push: {
+    vapidKey: () => apiInstance.get("/api/v1/push/vapid-public-key"),
+    subscribe: (data: PushSubscriptionPayload) =>
+      apiInstance.post("/api/v1/push/subscribe", data),
+    unsubscribe: (endpoint: string) =>
+      apiInstance.delete("/api/v1/push/unsubscribe", { data: { endpoint } }),
   },
 
   // Utility

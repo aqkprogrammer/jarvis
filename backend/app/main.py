@@ -161,9 +161,11 @@ async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse
 
 from app.api.v1 import api_router
 from app.api.v1.websockets.chat import router as ws_router
+from app.api.v1.websockets.presence import router as presence_ws_router
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router)
+app.include_router(presence_ws_router)
 
 
 # ── Health / Metrics ──────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -47,7 +47,8 @@ class Task(Base):
     user: Mapped["User"] = relationship("User", back_populates="tasks")
     subtasks: Mapped[list] = relationship(
         "Task",
-        backref="parent",
+        # self-referential: the many-to-one "parent" side needs remote_side
+        backref=backref("parent", remote_side="Task.id"),
         foreign_keys=[parent_task_id],
         lazy="selectin",
     )

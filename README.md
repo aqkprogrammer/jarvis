@@ -81,6 +81,11 @@ A production-ready, full-stack AI assistant platform built with FastAPI, Next.js
 - **Incoming webhooks** — public `hooks/{token}` URLs that trigger workflows from any external system
 - **Outgoing webhooks** — HMAC-SHA256 signed event notifications (workflow.completed/failed, schedule.completed) to any URL
 
+### Collaboration & Mobile
+- **Multi-user workspaces** — create workspaces, invite by email with tokenized links, admin/member roles, share conversations with your team
+- **Real-time presence** — live online indicators for workspace members via WebSocket
+- **PWA** — installable app with offline shell, service worker caching, and push notification scaffolding (VAPID)
+
 ### Infrastructure
 - **Authentication** — JWT access + refresh tokens, bcrypt passwords
 - **Background jobs** — Celery + Redis with celery-redbeat scheduler
@@ -401,6 +406,9 @@ Key endpoint groups:
 | `GET/POST /api/v1/webhooks/triggers` | Incoming webhook trigger management |
 | `POST /api/v1/hooks/{token}` | Public webhook receiver (triggers workflows) |
 | `GET/POST /api/v1/webhooks/outgoing` | Outgoing webhook management |
+| `GET/POST /api/v1/workspaces` | Workspaces, members, invites, shared conversations |
+| `WS /ws/presence` | Real-time workspace presence |
+| `POST /api/v1/push/subscribe` | Web push subscription management |
 
 ---
 

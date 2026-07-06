@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- JARVIS arc-reactor mark -->
+  <defs>
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7deeff"/>
+      <stop offset="55%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0066cc"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Dark background (maskable-safe full bleed) -->
+  <rect width="512" height="512" fill="#0a0e17"/>
+
+  <!-- Outer ring -->
+  <circle cx="256" cy="256" r="176" fill="none" stroke="#00d4ff" stroke-opacity="0.25" stroke-width="10"/>
+
+  <!-- Segmented reactor ring -->
+  <g stroke="#00d4ff" stroke-width="26" fill="none" stroke-linecap="butt">
+    <circle cx="256" cy="256" r="140" stroke-dasharray="52 21" stroke-opacity="0.9"
+            transform="rotate(-90 256 256)"/>
+  </g>
+
+  <!-- Inner hexagon -->
+  <polygon points="256,166 334,211 334,301 256,346 178,301 178,211"
+           fill="none" stroke="#00d4ff" stroke-opacity="0.65" stroke-width="10"/>
+
+  <!-- Core -->
+  <circle cx="256" cy="256" r="58" fill="url(#coreGlow)"/>
+  <circle cx="256" cy="256" r="58" fill="none" stroke="#aef4ff" stroke-opacity="0.85" stroke-width="6"/>
+
+  <!-- Core triangle (Mark reactor) -->
+  <polygon points="256,214 293,278 219,278" fill="#0a0e17" fill-opacity="0.85"/>
+  <polygon points="256,214 293,278 219,278" fill="none" stroke="#e6fbff" stroke-width="6" stroke-linejoin="round"/>
+</svg>

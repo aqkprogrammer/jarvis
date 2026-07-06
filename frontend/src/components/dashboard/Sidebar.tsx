@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Brain, CheckSquare, BarChart3, Settings,
   ChevronLeft, ChevronRight, Cpu, Zap, User, LogOut, Bot, FileText,
-  Workflow, Clock, Plug
+  Workflow, Clock, Plug, Users
 } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -18,6 +18,7 @@ const navItems = [
   { href: "/workflows", icon: Workflow, label: "Workflows" },
   { href: "/schedules", icon: Clock, label: "Schedules" },
   { href: "/integrations", icon: Plug, label: "Integrations" },
+  { href: "/workspace", icon: Users, label: "Workspace" },
   { href: "/tasks", icon: CheckSquare, label: "Tasks" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/agents", icon: Bot, label: "Agents" },
