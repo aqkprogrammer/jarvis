@@ -59,11 +59,25 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("qdrant_unavailable", error=str(exc))
 
+    # Start the scheduled-agents background loop (best-effort)
+    try:
+        from app.services.scheduler_service import start_scheduler
+        await start_scheduler()
+        logger.info("scheduler_started")
+    except Exception as exc:
+        logger.warning("scheduler_start_failed", error=str(exc))
+
     logger.info("jarvis_ready")
     yield
 
     # Shutdown
     logger.info("jarvis_shutting_down")
+    try:
+        from app.services.scheduler_service import stop_scheduler
+        await stop_scheduler()
+        logger.info("scheduler_stopped")
+    except Exception as exc:
+        logger.warning("scheduler_stop_failed", error=str(exc))
     await close_redis()
 
 

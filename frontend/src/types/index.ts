@@ -368,3 +368,103 @@ export interface StreamingState {
   content: string;
   toolCalls: ToolCall[];
 }
+
+// ==================== WORKFLOW TYPES ====================
+export type WorkflowNodeType = "trigger" | "agent" | "condition" | "output";
+export type ConditionOp = "contains" | "not_contains" | "equals";
+
+export interface WorkflowNodeCondition {
+  field: "output";
+  op: ConditionOp;
+  value: string;
+}
+
+export interface WorkflowNodeData {
+  label: string;
+  agent_type?: string;
+  prompt?: string;
+  condition?: WorkflowNodeCondition;
+}
+
+export interface WorkflowNode {
+  id: string;
+  type: WorkflowNodeType;
+  position: { x: number; y: number };
+  data: WorkflowNodeData;
+}
+
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface Workflow {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkflowRunStatus = "running" | "completed" | "failed";
+export type NodeResultStatus = "completed" | "failed" | "skipped";
+
+export interface NodeResult {
+  status: NodeResultStatus;
+  output?: string;
+  error?: string;
+  duration_ms?: number;
+}
+
+export interface WorkflowRun {
+  id: string;
+  workflow_id: string;
+  status: WorkflowRunStatus;
+  node_results: Record<string, NodeResult>;
+  error?: string;
+  started_at: string;
+  finished_at?: string;
+}
+
+// ==================== SCHEDULE TYPES ====================
+export type ScheduleTargetType = "workflow" | "prompt";
+
+export interface Schedule {
+  id: string;
+  user_id: string;
+  name: string;
+  cron: string;
+  target_type: ScheduleTargetType;
+  workflow_id?: string;
+  prompt?: string;
+  is_active: boolean;
+  last_run_at?: string;
+  next_run_at?: string;
+  last_status?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ==================== API KEY TYPES ====================
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_used_at?: string;
+  revoked: boolean;
+  created_at: string;
+}
+
+/** Returned only by the create endpoint — `key` is shown exactly once. */
+export interface ApiKeyCreated {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  key: string;
+}

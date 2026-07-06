@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user_flexible
 from app.models.user import User
 from app.schemas.chat import (
     ChatRequest,
@@ -27,7 +27,7 @@ router = APIRouter()
 async def send_message(
     payload: ChatRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     svc = ChatService(db)
 
@@ -80,7 +80,7 @@ async def list_conversations(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     svc = ChatService(db)
     return await svc.list_conversations(current_user.id, limit=limit, offset=offset)
@@ -90,7 +90,7 @@ async def list_conversations(
 async def create_conversation(
     payload: ConversationCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     svc = ChatService(db)
     conv = await svc.get_or_create_conversation(current_user.id, title=payload.title)
@@ -101,7 +101,7 @@ async def create_conversation(
 async def get_conversation(
     conversation_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     svc = ChatService(db)
     conv = await svc.get_conversation_with_messages(conversation_id, current_user.id)
@@ -114,7 +114,7 @@ async def get_conversation(
 async def delete_conversation(
     conversation_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     svc = ChatService(db)
     deleted = await svc.delete_conversation(conversation_id, current_user.id)
@@ -126,7 +126,7 @@ async def delete_conversation(
 async def clear_conversation(
     conversation_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     svc = ChatService(db)
     cleared = await svc.clear_messages(conversation_id, current_user.id)

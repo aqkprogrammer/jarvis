@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User,
   Key,
@@ -16,11 +17,20 @@ import {
   Eye,
   EyeOff,
   ChevronRight,
+  Plus,
+  Copy,
+  Check,
+  Trash2,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
+import { getApi } from '@/lib/api';
+import type { ApiKey, ApiKeyCreated } from '@/types';
 
 const SECTIONS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'ai', label: 'AI Providers', icon: Cpu },
+  { id: 'apikeys', label: 'API Keys', icon: Key },
   { id: 'voice', label: 'Voice', icon: Mic },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -380,9 +390,238 @@ function AppearanceSection() {
   );
 }
 
+function ApiKeysSection() {
+  const queryClient = useQueryClient();
+  const [newKeyName, setNewKeyName] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [createdKey, setCreatedKey] = useState<ApiKeyCreated | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: keys = [], isLoading } = useQuery({
+    queryKey: ['apikeys'],
+    queryFn: async () => {
+      const response = await getApi().apikeys.list();
+      const data = response.data as { items?: ApiKey[]; data?: ApiKey[] } | ApiKey[];
+      const items = Array.isArray(data) ? data : data?.items ?? data?.data ?? [];
+      return Array.isArray(items) ? items : [];
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const response = await getApi().apikeys.create(name);
+      return response.data as ApiKeyCreated;
+    },
+    onSuccess: (created) => {
+      setCreatedKey(created);
+      setNewKeyName('');
+      setShowCreate(false);
+      setCopied(false);
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['apikeys'] });
+    },
+    onError: (e) => setError((e as Error).message),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (id: string) => getApi().apikeys.revoke(id),
+    onSuccess: () => {
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['apikeys'] });
+    },
+    onError: (e) => setError((e as Error).message),
+  });
+
+  const copyKey = async () => {
+    if (!createdKey) return;
+    try {
+      await navigator.clipboard.writeText(createdKey.key);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy to clipboard');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-slate-400">
+        Personal keys for calling the JARVIS API from scripts, home automation, or external services.
+      </p>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* One-time reveal panel */}
+      {createdKey && (
+        <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 space-y-3">
+          <div className="flex items-center gap-2 text-amber-400 text-sm font-medium">
+            <AlertTriangle size={14} />
+            This key is shown only once — copy it now.
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-slate-900/80 border border-slate-700 text-xs font-mono text-cyan-300 break-all">
+              {createdKey.key}
+            </code>
+            <button
+              onClick={copyKey}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs hover:bg-cyan-500/20 transition-all shrink-0"
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-amber-400/70">
+              Key &quot;{createdKey.name}&quot; created. Store it somewhere safe.
+            </p>
+            <button
+              onClick={() => setCreatedKey(null)}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Generate new key */}
+      {showCreate ? (
+        <div className="flex items-center gap-2">
+          <input
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newKeyName.trim()) createMutation.mutate(newKeyName.trim());
+              if (e.key === 'Escape') setShowCreate(false);
+            }}
+            autoFocus
+            placeholder="Key name, e.g. Home Automation Hub"
+            className="flex-1 bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500/60"
+          />
+          <button
+            onClick={() => createMutation.mutate(newKeyName.trim())}
+            disabled={!newKeyName.trim() || createMutation.isPending}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm hover:bg-cyan-500/20 transition-all disabled:opacity-50"
+          >
+            {createMutation.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Key size={14} />
+            )}
+            Create
+          </button>
+          <button
+            onClick={() => setShowCreate(false)}
+            className="px-3 py-2 rounded-lg border border-slate-700 text-slate-400 text-sm hover:text-slate-200 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-sm hover:bg-cyan-500/20 transition-all"
+        >
+          <Plus size={14} />
+          Generate new key
+        </button>
+      )}
+
+      {/* Key list */}
+      <div className="space-y-2">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="h-16 rounded-lg bg-slate-800/60 animate-pulse" />
+            ))}
+          </div>
+        ) : keys.length === 0 ? (
+          <p className="text-sm text-slate-500 py-4 text-center">No API keys yet.</p>
+        ) : (
+          keys.map((k) => (
+            <div
+              key={k.id}
+              className={`flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-800/40 ${
+                k.revoked ? 'opacity-60' : ''
+              }`}
+            >
+              <div className="p-2 rounded-lg bg-cyan-500/5 border border-cyan-500/20 shrink-0">
+                <Key size={14} className="text-cyan-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-slate-200 truncate">{k.name}</p>
+                  {k.revoked && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider bg-red-500/10 border border-red-500/30 text-red-400 shrink-0">
+                      revoked
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-mono text-slate-500 mt-0.5">
+                  {k.key_prefix}
+                  <span className="tracking-widest">••••••••</span>
+                  <span className="mx-2 text-slate-700">|</span>
+                  created {new Date(k.created_at).toLocaleDateString()}
+                  <span className="mx-2 text-slate-700">|</span>
+                  last used{' '}
+                  {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never'}
+                </p>
+              </div>
+              {!k.revoked && (
+                <button
+                  onClick={() => {
+                    if (confirmingId === k.id) {
+                      revokeMutation.mutate(k.id);
+                      setConfirmingId(null);
+                    } else {
+                      setConfirmingId(k.id);
+                    }
+                  }}
+                  onMouseLeave={() => setConfirmingId((id) => (id === k.id ? null : id))}
+                  disabled={revokeMutation.isPending && revokeMutation.variables === k.id}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all shrink-0 ${
+                    confirmingId === k.id
+                      ? 'text-red-400 bg-red-500/10 border border-red-500/40'
+                      : 'text-slate-500 border border-slate-700 hover:text-red-400 hover:border-red-500/40'
+                  }`}
+                >
+                  {revokeMutation.isPending && revokeMutation.variables === k.id ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={12} />
+                  )}
+                  {confirmingId === k.id ? 'Confirm revoke?' : 'Revoke'}
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Usage hint */}
+      <div className="pt-3 border-t border-slate-800 space-y-2">
+        <p className="text-sm font-medium text-slate-300">Usage</p>
+        <p className="text-xs text-slate-500">
+          Pass your key in the <code className="text-cyan-400">X-API-Key</code> header:
+        </p>
+        <pre className="p-3 rounded-lg bg-slate-900/80 border border-slate-700 text-xs font-mono text-slate-300 overflow-x-auto">
+          {'curl -H "X-API-Key: jrv_..." http://localhost:8000/api/v1/chat'}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 const SECTION_COMPONENTS: Record<SectionId, React.ComponentType> = {
   profile: ProfileSection,
   ai: AIProvidersSection,
+  apikeys: ApiKeysSection,
   voice: VoiceSection,
   memory: MemorySection,
   notifications: NotificationsSection,

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user_flexible
 from app.models.document import Document
 from app.models.user import User
 from app.services import document_service
@@ -56,7 +56,7 @@ class DocumentSearchResult(BaseModel):
 async def upload_document(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     content = await file.read()
     if not content:
@@ -97,7 +97,7 @@ async def list_documents(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     return await document_service.list_documents(
         db, user_id=current_user.id, limit=limit, offset=offset
@@ -108,7 +108,7 @@ async def list_documents(
 async def get_document(
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     document = await document_service.get_document(db, document_id, current_user.id)
     if not document:
@@ -120,7 +120,7 @@ async def get_document(
 async def delete_document(
     document_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     document = await document_service.get_document(db, document_id, current_user.id)
     if not document:
@@ -131,7 +131,7 @@ async def delete_document(
 @router.post("/search", response_model=List[DocumentSearchResult])
 async def search_documents(
     payload: DocumentSearchRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_flexible),
 ):
     results = await document_service.search_documents(
         query=payload.query,

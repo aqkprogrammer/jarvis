@@ -69,6 +69,11 @@ A production-ready, full-stack AI assistant platform built with FastAPI, Next.js
 - **Agent monitor** — live status of all agents
 - **Settings** — API keys, voice configuration, appearance
 
+### Automation Platform
+- **Visual workflow builder** — drag-and-drop pipeline canvas (React Flow): trigger → agent → condition → output nodes, per-node run results with durations
+- **Scheduled agents** — cron-style schedules ("summarise my inbox every weekday at 9am") targeting workflows or prompts, with run history and next-run preview
+- **User API keys** — generate `jrv_...` keys in Settings, call chat/RAG endpoints programmatically via `X-API-Key` header
+
 ### Infrastructure
 - **Authentication** — JWT access + refresh tokens, bcrypt passwords
 - **Background jobs** — Celery + Redis with celery-redbeat scheduler
@@ -382,6 +387,9 @@ Key endpoint groups:
 | `GET/DELETE /api/v1/documents` | List / delete documents |
 | `POST /api/v1/documents/search` | Semantic search over document chunks |
 | `POST /api/v1/execute` | Sandboxed Python/JavaScript execution |
+| `GET/POST /api/v1/workflows` | Workflow CRUD + `POST /{id}/run` execution |
+| `GET/POST /api/v1/schedules` | Cron schedules + toggle + run-now |
+| `GET/POST /api/v1/apikeys` | User API key management (`X-API-Key` auth) |
 
 ---
 

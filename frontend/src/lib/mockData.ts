@@ -6,6 +6,10 @@ import type {
   Task,
   Agent,
   Document,
+  Workflow,
+  WorkflowRun,
+  Schedule,
+  ApiKey,
 } from "@/types";
 
 // ─── Demo credentials ────────────────────────────────────────────────────────
@@ -332,6 +336,207 @@ export const DEMO_ANALYTICS = {
     { model: "groq/llama-3.3-70b",  tokens: 201_293,   percentage: 10.9 },
   ],
 };
+
+// ─── Workflows ────────────────────────────────────────────────────────────────
+export const DEMO_WORKFLOWS: Workflow[] = [
+  {
+    id: "wf-001",
+    user_id: "demo-user-001",
+    name: "Morning Briefing",
+    description: "Compiles news, calendar and open tasks into a daily briefing.",
+    nodes: [
+      {
+        id: "wf1-trigger",
+        type: "trigger",
+        position: { x: 60, y: 180 },
+        data: { label: "Manual Trigger" },
+      },
+      {
+        id: "wf1-research",
+        type: "agent",
+        position: { x: 340, y: 180 },
+        data: {
+          label: "Research Agent",
+          agent_type: "research",
+          prompt: "Compile a morning briefing: top news headlines, today's calendar, weather and open tasks. Focus: {input}",
+        },
+      },
+      {
+        id: "wf1-output",
+        type: "output",
+        position: { x: 620, y: 180 },
+        data: { label: "Briefing Report" },
+      },
+    ],
+    edges: [
+      { id: "wf1-e1", source: "wf1-trigger", target: "wf1-research" },
+      { id: "wf1-e2", source: "wf1-research", target: "wf1-output" },
+    ],
+    is_active: true,
+    created_at: "2026-06-10T08:00:00Z",
+    updated_at: "2026-07-04T07:45:00Z",
+  },
+  {
+    id: "wf-002",
+    user_id: "demo-user-001",
+    name: "Code Review Pipeline",
+    description: "Runs the coding agent over a diff and files a report when issues are found.",
+    nodes: [
+      {
+        id: "wf2-trigger",
+        type: "trigger",
+        position: { x: 40, y: 220 },
+        data: { label: "PR Submitted" },
+      },
+      {
+        id: "wf2-coding",
+        type: "agent",
+        position: { x: 300, y: 220 },
+        data: {
+          label: "Coding Agent",
+          agent_type: "coding",
+          prompt: "Review the submitted code for bugs, style problems and security issues: {input}",
+        },
+      },
+      {
+        id: "wf2-condition",
+        type: "condition",
+        position: { x: 580, y: 220 },
+        data: {
+          label: "Issues Found?",
+          condition: { field: "output", op: "contains", value: "issue" },
+        },
+      },
+      {
+        id: "wf2-output",
+        type: "output",
+        position: { x: 840, y: 220 },
+        data: { label: "Review Report" },
+      },
+    ],
+    edges: [
+      { id: "wf2-e1", source: "wf2-trigger", target: "wf2-coding" },
+      { id: "wf2-e2", source: "wf2-coding", target: "wf2-condition" },
+      { id: "wf2-e3", source: "wf2-condition", target: "wf2-output" },
+    ],
+    is_active: true,
+    created_at: "2026-06-18T14:20:00Z",
+    updated_at: "2026-07-02T16:10:00Z",
+  },
+];
+
+// ─── Workflow runs ────────────────────────────────────────────────────────────
+export const DEMO_WORKFLOW_RUNS: WorkflowRun[] = [
+  {
+    id: "run-001",
+    workflow_id: "wf-001",
+    status: "completed",
+    node_results: {
+      "wf1-trigger": { status: "completed", output: "Focus on arc reactor program and board prep.", duration_ms: 4 },
+      "wf1-research": {
+        status: "completed",
+        output:
+          "[research agent] Morning briefing compiled — 3 relevant headlines (clean-energy policy vote passed, palladium futures down 4%, Hammer Industries filed 2 new patents), 4 calendar events today (board prep 10:00, wind-tunnel slot 14:00), weather clear 24°C, 3 open tasks carried over.",
+        duration_ms: 1830,
+      },
+      "wf1-output": {
+        status: "completed",
+        output: "Briefing delivered to dashboard and inbox at 08:00.",
+        duration_ms: 112,
+      },
+    },
+    started_at: "2026-07-04T08:00:00Z",
+    finished_at: "2026-07-04T08:00:02Z",
+  },
+  {
+    id: "run-002",
+    workflow_id: "wf-002",
+    status: "completed",
+    node_results: {
+      "wf2-trigger": { status: "completed", output: "PR #482: telemetry pipeline refactor (14 files).", duration_ms: 3 },
+      "wf2-coding": {
+        status: "completed",
+        output:
+          "[coding agent] Review complete — 2 issues found: (1) unbounded queue growth in telemetry_buffer.py, (2) missing timeout on satellite uplink socket. 5 style nits. Suggested fixes attached.",
+        duration_ms: 2410,
+      },
+      "wf2-condition": { status: "completed", output: "true — output contains \"issue\"", duration_ms: 6 },
+      "wf2-output": {
+        status: "completed",
+        output: "Review report posted to PR #482 with 2 blocking comments.",
+        duration_ms: 98,
+      },
+    },
+    started_at: "2026-07-02T16:08:00Z",
+    finished_at: "2026-07-02T16:08:03Z",
+  },
+];
+
+// ─── Schedules ────────────────────────────────────────────────────────────────
+export const DEMO_SCHEDULES: Schedule[] = [
+  {
+    id: "sched-001",
+    user_id: "demo-user-001",
+    name: "Daily Morning Briefing",
+    cron: "0 8 * * *",
+    target_type: "workflow",
+    workflow_id: "wf-001",
+    is_active: true,
+    last_run_at: "2026-07-06T08:00:00Z",
+    next_run_at: "2026-07-07T08:00:00Z",
+    last_status: "completed",
+    created_at: "2026-06-10T08:30:00Z",
+    updated_at: "2026-07-06T08:00:00Z",
+  },
+  {
+    id: "sched-002",
+    user_id: "demo-user-001",
+    name: "Weekday Standup Summary",
+    cron: "0 9 * * 1-5",
+    target_type: "prompt",
+    prompt:
+      "Summarize yesterday's completed tasks, today's priorities and any blockers across all active projects. Keep it under 10 bullet points.",
+    is_active: true,
+    last_run_at: "2026-07-03T09:00:00Z",
+    next_run_at: "2026-07-06T09:00:00Z",
+    last_status: "completed",
+    created_at: "2026-06-15T11:00:00Z",
+    updated_at: "2026-07-03T09:00:00Z",
+  },
+  {
+    id: "sched-003",
+    user_id: "demo-user-001",
+    name: "Hourly System Check",
+    cron: "0 * * * *",
+    target_type: "prompt",
+    prompt: "Run diagnostics on all agent subsystems and report anything anomalous.",
+    is_active: false,
+    last_run_at: "2026-06-30T22:00:00Z",
+    last_status: "failed",
+    created_at: "2026-06-20T09:00:00Z",
+    updated_at: "2026-06-30T22:05:00Z",
+  },
+];
+
+// ─── API keys ─────────────────────────────────────────────────────────────────
+export const DEMO_API_KEYS: ApiKey[] = [
+  {
+    id: "key-001",
+    name: "Home Automation Hub",
+    key_prefix: "jrv_a81f4c",
+    last_used_at: "2026-07-05T21:14:00Z",
+    revoked: false,
+    created_at: "2026-05-12T10:00:00Z",
+  },
+  {
+    id: "key-002",
+    name: "Legacy CLI Token",
+    key_prefix: "jrv_09d7e2",
+    last_used_at: "2026-04-02T08:30:00Z",
+    revoked: true,
+    created_at: "2026-02-01T09:00:00Z",
+  },
+];
 
 // ─── Canned JARVIS responses for demo chat ────────────────────────────────────
 export const DEMO_RESPONSES = [

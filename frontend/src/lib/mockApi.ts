@@ -15,10 +15,16 @@ import {
   DEMO_ANALYTICS,
   DEMO_DOCUMENTS,
   DEMO_DOCUMENT_CHUNKS,
+  DEMO_WORKFLOWS,
+  DEMO_WORKFLOW_RUNS,
+  DEMO_SCHEDULES,
+  DEMO_API_KEYS,
   getRandomDemoResponse,
 } from "./mockData";
 import type {
   Message, Memory, Task, Agent, Document, DocumentSearchResult, ReasoningStep,
+  Workflow, WorkflowEdge, WorkflowNode, WorkflowRun, NodeResult,
+  Schedule, ScheduleTargetType, ApiKey, ApiKeyCreated,
 } from "@/types";
 
 // Simulates realistic network latency
@@ -33,6 +39,121 @@ const agentsStore: Agent[] = [...DEMO_AGENTS];
 let documentsStore: Document[] = JSON.parse(JSON.stringify(DEMO_DOCUMENTS));
 // Uploaded-in-session chunks so search also "finds" new files
 let documentChunks = [...DEMO_DOCUMENT_CHUNKS];
+let workflowsStore: Workflow[] = JSON.parse(JSON.stringify(DEMO_WORKFLOWS));
+let workflowRunsStore: WorkflowRun[] = JSON.parse(JSON.stringify(DEMO_WORKFLOW_RUNS));
+let schedulesStore: Schedule[] = JSON.parse(JSON.stringify(DEMO_SCHEDULES));
+let apiKeysStore: ApiKey[] = JSON.parse(JSON.stringify(DEMO_API_KEYS));
+
+// Walks the workflow graph in edge order and fabricates per-node results.
+function simulateWorkflowRun(workflow: Workflow, input: string): WorkflowRun {
+  const startedAt = new Date().toISOString();
+  const nodesById = new Map(workflow.nodes.map((n) => [n.id, n]));
+  const adjacency = new Map<string, string[]>();
+  workflow.edges.forEach((e) => {
+    adjacency.set(e.source, [...(adjacency.get(e.source) ?? []), e.target]);
+  });
+  const hasIncoming = new Set(workflow.edges.map((e) => e.target));
+  const roots = workflow.nodes.filter((n) => !hasIncoming.has(n.id));
+
+  const results: Record<string, NodeResult> = {};
+  const visited = new Set<string>();
+  const queue: Array<{ id: string; carried: string; skipped: boolean }> = roots.map((n) => ({
+    id: n.id,
+    carried: input,
+    skipped: false,
+  }));
+
+  while (queue.length > 0) {
+    const { id, carried, skipped } = queue.shift()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const node = nodesById.get(id);
+    if (!node) continue;
+
+    let output = carried;
+    let skipDownstream = skipped;
+
+    if (skipped) {
+      results[id] = { status: "skipped" };
+    } else {
+      switch (node.type) {
+        case "trigger":
+          output = input || "Workflow triggered manually.";
+          results[id] = { status: "completed", output, duration_ms: 5 + Math.floor(Math.random() * 20) };
+          break;
+        case "agent": {
+          const agentType = node.data.agent_type || "planner";
+          const task = node.data.prompt ? node.data.prompt.replace(/\{input\}/g, carried) : carried;
+          output = `[${agentType} agent] Processed: ${task.slice(0, 160)}${task.length > 160 ? "…" : ""} — produced a structured result with 3 key findings and a recommended next step.`;
+          results[id] = {
+            status: "completed",
+            output,
+            duration_ms: 400 + Math.floor(Math.random() * 1600),
+          };
+          break;
+        }
+        case "condition": {
+          const cond = node.data.condition;
+          let pass = true;
+          if (cond) {
+            const haystack = carried.toLowerCase();
+            const needle = cond.value.toLowerCase();
+            if (cond.op === "contains") pass = haystack.includes(needle);
+            else if (cond.op === "not_contains") pass = !haystack.includes(needle);
+            else pass = haystack === needle;
+          }
+          output = carried;
+          skipDownstream = !pass;
+          results[id] = {
+            status: "completed",
+            output: cond
+              ? `${pass} — output ${cond.op.replace("_", " ")} "${cond.value}"`
+              : "true — no condition configured",
+            duration_ms: 3 + Math.floor(Math.random() * 15),
+          };
+          break;
+        }
+        case "output":
+          output = carried;
+          results[id] = {
+            status: "completed",
+            output: `Final output delivered: ${carried.slice(0, 220)}${carried.length > 220 ? "…" : ""}`,
+            duration_ms: 30 + Math.floor(Math.random() * 120),
+          };
+          break;
+      }
+    }
+
+    (adjacency.get(id) ?? []).forEach((target) => {
+      queue.push({ id: target, carried: output, skipped: skipDownstream });
+    });
+  }
+
+  // Disconnected nodes never execute
+  workflow.nodes.forEach((n) => {
+    if (!results[n.id]) results[n.id] = { status: "skipped" };
+  });
+
+  return {
+    id: `run-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    workflow_id: workflow.id,
+    status: "completed",
+    node_results: results,
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+  };
+}
+
+// Naive "next run" estimate for the mock scheduler
+function naiveNextRun(cron: string): string {
+  const minuteField = cron.trim().split(/\s+/)[0] ?? "*";
+  const stepMatch = minuteField.match(/^\*\/(\d+)$/);
+  let deltaMs = 60 * 60 * 1000; // default: an hour from now
+  if (minuteField === "*" ) deltaMs = 60 * 1000;
+  else if (stepMatch) deltaMs = parseInt(stepMatch[1], 10) * 60 * 1000;
+  else if (cron.trim().split(/\s+/)[1] !== "*") deltaMs = 24 * 60 * 60 * 1000; // daily-ish
+  return new Date(Date.now() + deltaMs).toISOString();
+}
 
 // Builds a plausible reasoning trace for a simulated assistant reply
 function buildDemoTrace(content: string, documentIds?: string[]): ReasoningStep[] {
@@ -415,6 +536,230 @@ export const mockApi = {
     usage: async () => { await delay(300); return ok(DEMO_ANALYTICS.usage); },
     daily: async () => { await delay(300); return ok({ items: DEMO_ANALYTICS.daily }); },
     models: async () => { await delay(300); return ok({ items: DEMO_ANALYTICS.models }); },
+  },
+
+  workflows: {
+    list: async () => {
+      await delay(300);
+      return ok({ items: workflowsStore, total: workflowsStore.length });
+    },
+    get: async (id: string) => {
+      await delay(200);
+      const wf = workflowsStore.find((w) => w.id === id);
+      if (!wf) throw Object.assign(new Error("Workflow not found"), { status: 404 });
+      return ok(wf);
+    },
+    create: async (data: {
+      name: string;
+      description?: string;
+      nodes: WorkflowNode[];
+      edges: WorkflowEdge[];
+      is_active?: boolean;
+    }) => {
+      await delay(400);
+      const now = new Date().toISOString();
+      const wf: Workflow = {
+        id: `wf-${Date.now()}`,
+        user_id: DEMO_USER.id,
+        name: data.name,
+        description: data.description,
+        nodes: data.nodes,
+        edges: data.edges,
+        is_active: data.is_active ?? true,
+        created_at: now,
+        updated_at: now,
+      };
+      workflowsStore = [wf, ...workflowsStore];
+      return ok(wf);
+    },
+    update: async (
+      id: string,
+      data: Partial<{
+        name: string;
+        description: string;
+        nodes: WorkflowNode[];
+        edges: WorkflowEdge[];
+        is_active: boolean;
+      }>
+    ) => {
+      await delay(300);
+      const existing = workflowsStore.find((w) => w.id === id);
+      if (!existing) throw Object.assign(new Error("Workflow not found"), { status: 404 });
+      workflowsStore = workflowsStore.map((w) =>
+        w.id === id ? { ...w, ...data, updated_at: new Date().toISOString() } : w
+      );
+      return ok(workflowsStore.find((w) => w.id === id));
+    },
+    delete: async (id: string) => {
+      await delay(200);
+      workflowsStore = workflowsStore.filter((w) => w.id !== id);
+      workflowRunsStore = workflowRunsStore.filter((r) => r.workflow_id !== id);
+      return ok({ message: "Deleted" });
+    },
+    run: async (id: string, input: string) => {
+      await delay(600);
+      const wf = workflowsStore.find((w) => w.id === id);
+      if (!wf) throw Object.assign(new Error("Workflow not found"), { status: 404 });
+      const run = simulateWorkflowRun(wf, input);
+      workflowRunsStore = [run, ...workflowRunsStore];
+      return ok(run);
+    },
+    runs: async (id: string) => {
+      await delay(250);
+      const items = workflowRunsStore
+        .filter((r) => r.workflow_id === id)
+        .sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+      return ok({ items, total: items.length });
+    },
+    getRun: async (runId: string) => {
+      await delay(200);
+      const run = workflowRunsStore.find((r) => r.id === runId);
+      if (!run) throw Object.assign(new Error("Run not found"), { status: 404 });
+      return ok(run);
+    },
+  },
+
+  schedules: {
+    list: async () => {
+      await delay(300);
+      return ok({ items: schedulesStore, total: schedulesStore.length });
+    },
+    create: async (data: {
+      name: string;
+      cron: string;
+      target_type: ScheduleTargetType;
+      workflow_id?: string;
+      prompt?: string;
+      is_active?: boolean;
+    }) => {
+      await delay(400);
+      const now = new Date().toISOString();
+      const schedule: Schedule = {
+        id: `sched-${Date.now()}`,
+        user_id: DEMO_USER.id,
+        name: data.name,
+        cron: data.cron,
+        target_type: data.target_type,
+        workflow_id: data.target_type === "workflow" ? data.workflow_id : undefined,
+        prompt: data.target_type === "prompt" ? data.prompt : undefined,
+        is_active: data.is_active ?? true,
+        next_run_at: naiveNextRun(data.cron),
+        created_at: now,
+        updated_at: now,
+      };
+      schedulesStore = [schedule, ...schedulesStore];
+      return ok(schedule);
+    },
+    update: async (
+      id: string,
+      data: Partial<{
+        name: string;
+        cron: string;
+        target_type: ScheduleTargetType;
+        workflow_id: string;
+        prompt: string;
+        is_active: boolean;
+      }>
+    ) => {
+      await delay(300);
+      const existing = schedulesStore.find((s) => s.id === id);
+      if (!existing) throw Object.assign(new Error("Schedule not found"), { status: 404 });
+      schedulesStore = schedulesStore.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              ...data,
+              next_run_at: data.cron ? naiveNextRun(data.cron) : s.next_run_at,
+              updated_at: new Date().toISOString(),
+            }
+          : s
+      );
+      return ok(schedulesStore.find((s) => s.id === id));
+    },
+    delete: async (id: string) => {
+      await delay(200);
+      schedulesStore = schedulesStore.filter((s) => s.id !== id);
+      return ok({ message: "Deleted" });
+    },
+    toggle: async (id: string) => {
+      await delay(200);
+      const existing = schedulesStore.find((s) => s.id === id);
+      if (!existing) throw Object.assign(new Error("Schedule not found"), { status: 404 });
+      schedulesStore = schedulesStore.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              is_active: !s.is_active,
+              next_run_at: !s.is_active ? naiveNextRun(s.cron) : undefined,
+              updated_at: new Date().toISOString(),
+            }
+          : s
+      );
+      return ok(schedulesStore.find((s) => s.id === id));
+    },
+    runNow: async (id: string) => {
+      await delay(500);
+      const existing = schedulesStore.find((s) => s.id === id);
+      if (!existing) throw Object.assign(new Error("Schedule not found"), { status: 404 });
+      // If the schedule targets a workflow, actually simulate a run so it shows up in history
+      if (existing.target_type === "workflow" && existing.workflow_id) {
+        const wf = workflowsStore.find((w) => w.id === existing.workflow_id);
+        if (wf) {
+          const run = simulateWorkflowRun(wf, `Scheduled run: ${existing.name}`);
+          workflowRunsStore = [run, ...workflowRunsStore];
+        }
+      }
+      const now = new Date().toISOString();
+      schedulesStore = schedulesStore.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              last_run_at: now,
+              last_status: "completed",
+              next_run_at: s.is_active ? naiveNextRun(s.cron) : s.next_run_at,
+              updated_at: now,
+            }
+          : s
+      );
+      return ok(schedulesStore.find((s) => s.id === id));
+    },
+  },
+
+  apikeys: {
+    list: async () => {
+      await delay(300);
+      // Never include the full key in list responses — matches the real API
+      return ok({ items: apiKeysStore, total: apiKeysStore.length });
+    },
+    create: async (name: string) => {
+      await delay(400);
+      const suffix = Array.from({ length: 3 }, () => Math.random().toString(36).slice(2, 10)).join("");
+      const key = `jrv_demo_${suffix}`;
+      const now = new Date().toISOString();
+      const record: ApiKey = {
+        id: `key-${Date.now()}`,
+        name,
+        key_prefix: key.slice(0, 12),
+        revoked: false,
+        created_at: now,
+      };
+      apiKeysStore = [record, ...apiKeysStore];
+      const created: ApiKeyCreated = {
+        id: record.id,
+        name: record.name,
+        key_prefix: record.key_prefix,
+        created_at: record.created_at,
+        key,
+      };
+      return ok(created);
+    },
+    revoke: async (id: string) => {
+      await delay(200);
+      const existing = apiKeysStore.find((k) => k.id === id);
+      if (!existing) throw Object.assign(new Error("API key not found"), { status: 404 });
+      apiKeysStore = apiKeysStore.map((k) => (k.id === id ? { ...k, revoked: true } : k));
+      return ok({ message: "Revoked" });
+    },
   },
 
   withRetry: async <T>(fn: () => Promise<T>) => fn(),

@@ -1,4 +1,5 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
+import type { WorkflowNode, WorkflowEdge, ScheduleTargetType } from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -217,6 +218,68 @@ export const api = {
     daily: (params?: { days?: number }) =>
       apiInstance.get("/api/v1/analytics/daily", { params }),
     models: () => apiInstance.get("/api/v1/analytics/models"),
+  },
+
+  // Workflows
+  workflows: {
+    list: () => apiInstance.get("/api/v1/workflows"),
+    get: (id: string) => apiInstance.get(`/api/v1/workflows/${id}`),
+    create: (data: {
+      name: string;
+      description?: string;
+      nodes: WorkflowNode[];
+      edges: WorkflowEdge[];
+      is_active?: boolean;
+    }) => apiInstance.post("/api/v1/workflows", data),
+    update: (
+      id: string,
+      data: Partial<{
+        name: string;
+        description: string;
+        nodes: WorkflowNode[];
+        edges: WorkflowEdge[];
+        is_active: boolean;
+      }>
+    ) => apiInstance.put(`/api/v1/workflows/${id}`, data),
+    delete: (id: string) => apiInstance.delete(`/api/v1/workflows/${id}`),
+    run: (id: string, input: string) =>
+      apiInstance.post(`/api/v1/workflows/${id}/run`, { input }),
+    runs: (id: string) => apiInstance.get(`/api/v1/workflows/${id}/runs`),
+    getRun: (runId: string) => apiInstance.get(`/api/v1/workflows/runs/${runId}`),
+  },
+
+  // Schedules
+  schedules: {
+    list: () => apiInstance.get("/api/v1/schedules"),
+    create: (data: {
+      name: string;
+      cron: string;
+      target_type: ScheduleTargetType;
+      workflow_id?: string;
+      prompt?: string;
+      is_active?: boolean;
+    }) => apiInstance.post("/api/v1/schedules", data),
+    update: (
+      id: string,
+      data: Partial<{
+        name: string;
+        cron: string;
+        target_type: ScheduleTargetType;
+        workflow_id: string;
+        prompt: string;
+        is_active: boolean;
+      }>
+    ) => apiInstance.put(`/api/v1/schedules/${id}`, data),
+    delete: (id: string) => apiInstance.delete(`/api/v1/schedules/${id}`),
+    toggle: (id: string) => apiInstance.post(`/api/v1/schedules/${id}/toggle`),
+    runNow: (id: string) => apiInstance.post(`/api/v1/schedules/${id}/run-now`),
+  },
+
+  // API keys
+  apikeys: {
+    list: () => apiInstance.get("/api/v1/apikeys"),
+    create: (name: string) => apiInstance.post("/api/v1/apikeys", { name }),
+    revoke: (id: string) => apiInstance.delete(`/api/v1/apikeys/${id}`),
   },
 
   // Utility

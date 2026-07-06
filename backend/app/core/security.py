@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -16,6 +17,10 @@ from app.core.database import get_db
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False
+)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 # ── Password helpers ──────────────────────────────────────────────────────────
@@ -83,6 +88,52 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return user
+
+
+async def get_current_user_flexible(
+    api_key: Optional[str] = Depends(api_key_header),
+    token: Optional[str] = Depends(oauth2_scheme_optional),
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Authenticate via X-API-Key header if present, otherwise fall back to JWT.
+
+    Allows user-generated API keys (see app.models.api_key.ApiKey) to drive
+    endpoints programmatically while browser sessions keep using JWT.
+    """
+    from sqlalchemy import select
+
+    if api_key:
+        from app.models.api_key import ApiKey
+        from app.models.user import User
+
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        result = await db.execute(
+            select(ApiKey).where(ApiKey.key_hash == key_hash, ApiKey.revoked == False)  # noqa: E712
+        )
+        record = result.scalar_one_or_none()
+        if not record:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
+            )
+
+        user_result = await db.execute(select(User).where(User.id == record.user_id))
+        user = user_result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        if not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+
+        record.last_used_at = datetime.now(timezone.utc)
+        await db.flush()
+        return user
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return await get_current_user(token=token, db=db)
 
 
 async def get_current_superuser(current_user: Any = Depends(get_current_user)) -> Any:
