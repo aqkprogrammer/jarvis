@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   MessageSquare, Brain, CheckSquare, BarChart3, Settings,
   ChevronLeft, ChevronRight, Cpu, Zap, User, LogOut, Bot, FileText,
-  Workflow, Clock, Plug, Users
+  Workflow, Clock, Plug, Users, ScrollText, ShieldCheck
 } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -19,17 +19,23 @@ const navItems = [
   { href: "/schedules", icon: Clock, label: "Schedules" },
   { href: "/integrations", icon: Plug, label: "Integrations" },
   { href: "/workspace", icon: Users, label: "Workspace" },
+  { href: "/audit", icon: ScrollText, label: "Audit Log" },
   { href: "/tasks", icon: CheckSquare, label: "Tasks" },
   { href: "/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/agents", icon: Bot, label: "Agents" },
   { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
+// Rendered last, and only for admins
+const adminNavItem = { href: "/admin", icon: ShieldCheck, label: "Admin" };
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const { user, logout } = useAuthStore();
+
+  const items = user?.is_admin ? [...navItems, adminNavItem] : navItems;
 
   const handleLogout = async () => {
     await logout();
@@ -86,7 +92,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {items.map((item) => {
           const isActive = pathname?.startsWith(item.href);
           return (
             <button

@@ -14,6 +14,7 @@ from app.core.security import get_current_user
 from app.models.integration import Integration
 from app.models.user import User
 from app.services import integration_service
+from app.services.audit_service import audit
 from app.services.integration_service import IntegrationError
 
 router = APIRouter()
@@ -132,6 +133,8 @@ async def create_integration(
     await _apply_test(integration)
     db.add(integration)
     await db.flush()
+    await audit(db, current_user.id, "integration.create", "integration", str(integration.id),
+                detail={"provider": integration.provider, "name": integration.name})
     return _to_response(integration)
 
 
@@ -161,8 +164,11 @@ async def delete_integration(
     current_user: User = Depends(get_current_user),
 ):
     integration = await _get_owned_integration(db, integration_id, current_user.id)
+    provider, name = integration.provider, integration.name
     await db.delete(integration)
     await db.flush()
+    await audit(db, current_user.id, "integration.delete", "integration", str(integration_id),
+                detail={"provider": provider, "name": name})
 
 
 @router.post("/{integration_id}/test", response_model=IntegrationTestResponse)

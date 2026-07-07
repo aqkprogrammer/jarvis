@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_V1_STR: str = "/api/v1"
     API_BASE_URL: str = "http://localhost:8000"  # public base URL, e.g. for webhook URLs
+    # user with this email is auto-granted admin (is_superuser) on startup
+    ADMIN_EMAIL: Optional[str] = None
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str = "change-me-in-production-use-secrets-generate-urandom-32"

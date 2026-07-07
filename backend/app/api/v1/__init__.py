@@ -15,6 +15,9 @@ from app.api.v1.endpoints import (
     webhooks,
     workspaces,
     push,
+    usage,
+    audit,
+    admin,
 )
 
 api_router = APIRouter()
@@ -36,3 +39,6 @@ api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"]
 api_router.include_router(webhooks.public_router, prefix="/hooks", tags=["webhooks"])
 api_router.include_router(workspaces.router, prefix="/workspaces", tags=["workspaces"])
 api_router.include_router(push.router, prefix="/push", tags=["push"])
+api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(admin.router, prefix="/admin", tags=["admin"])

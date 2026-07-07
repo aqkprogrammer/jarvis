@@ -34,6 +34,28 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.error("database_init_failed", error=str(exc))
 
+    # Bootstrap admin: grant the admin flag to ADMIN_EMAIL (best-effort)
+    if settings.ADMIN_EMAIL:
+        try:
+            from sqlalchemy import select
+
+            from app.core.database import AsyncSessionLocal
+            from app.models.user import User
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(User).where(User.email == settings.ADMIN_EMAIL)
+                )
+                admin_user = result.scalar_one_or_none()
+                if admin_user and not admin_user.is_superuser:
+                    admin_user.is_superuser = True
+                    await session.commit()
+                    logger.info("admin_bootstrap_granted", email=settings.ADMIN_EMAIL)
+                elif not admin_user:
+                    logger.warning("admin_bootstrap_user_not_found", email=settings.ADMIN_EMAIL)
+        except Exception as exc:
+            logger.warning("admin_bootstrap_failed", error=str(exc))
+
     # Warm up Redis pool
     try:
         r = get_redis()

@@ -15,6 +15,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.api_key import ApiKey
 from app.models.user import User
+from app.services.audit_service import audit
 
 router = APIRouter()
 
@@ -61,6 +62,8 @@ async def create_api_key(
     )
     db.add(api_key)
     await db.flush()
+    await audit(db, current_user.id, "apikey.create", "apikey", str(api_key.id),
+                detail={"name": api_key.name, "key_prefix": api_key.key_prefix})
     return ApiKeyCreatedResponse(
         id=api_key.id,
         name=api_key.name,
@@ -97,3 +100,5 @@ async def revoke_api_key(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
     api_key.revoked = True
     await db.flush()
+    await audit(db, current_user.id, "apikey.revoke", "apikey", str(key_id),
+                detail={"name": api_key.name, "key_prefix": api_key.key_prefix})

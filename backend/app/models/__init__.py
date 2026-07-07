@@ -14,6 +14,7 @@ from app.models.integration import Integration
 from app.models.webhook import OutgoingWebhook, WebhookTrigger
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
 from app.models.push_subscription import PushSubscription
+from app.models.usage_record import UsageRecord
 
 __all__ = [
     "User", "Conversation", "Message", "Memory", "Task", "Plugin", "AuditLog", "RefreshToken",
@@ -21,4 +22,5 @@ __all__ = [
     "Workflow", "WorkflowRun", "Schedule", "ApiKey",
     "Integration", "WebhookTrigger", "OutgoingWebhook",
     "Workspace", "WorkspaceMember", "WorkspaceInvite", "PushSubscription",
+    "UsageRecord",
 ]

@@ -29,6 +29,14 @@ import {
   DEMO_WORKSPACE_INVITES,
   DEMO_SHARED_CONVERSATIONS,
   DEMO_VAPID_PUBLIC_KEY,
+  DEMO_USAGE_SUMMARY,
+  DEMO_USAGE_DAILY,
+  DEMO_USAGE_BY_MODEL,
+  DEMO_TOP_CONVERSATIONS,
+  DEMO_AUDIT_LOGS,
+  DEMO_ADMIN_STATS,
+  DEMO_ADMIN_USERS,
+  DEMO_ADMIN_USAGE_DAILY,
   buildDemoPRSummary,
   getRandomDemoResponse,
 } from "./mockData";
@@ -39,6 +47,7 @@ import type {
   Integration, IntegrationProvider, WebhookTrigger, OutgoingWebhook, WebhookEvent,
   Workspace, WorkspaceMember, WorkspaceInvite, WorkspaceRole,
   SharedConversation, PushSubscriptionPayload,
+  AuditLog, AdminUser,
 } from "@/types";
 
 // Simulates realistic network latency
@@ -65,6 +74,44 @@ const workspaceMembersStore: Record<string, WorkspaceMember[]> = JSON.parse(JSON
 const workspaceInvitesStore: Record<string, WorkspaceInvite[]> = JSON.parse(JSON.stringify(DEMO_WORKSPACE_INVITES));
 const sharedConversationsStore: Record<string, SharedConversation[]> = JSON.parse(JSON.stringify(DEMO_SHARED_CONVERSATIONS));
 let pushSubscriptionsStore: PushSubscriptionPayload[] = [];
+const auditLogsStore: AuditLog[] = JSON.parse(JSON.stringify(DEMO_AUDIT_LOGS));
+let adminUsersStore: AdminUser[] = JSON.parse(JSON.stringify(DEMO_ADMIN_USERS));
+
+/** Shared audit filtering — action prefix, resource type, substring q, date range, user. */
+function filterAuditLogs(
+  logs: AuditLog[],
+  params?: {
+    user_id?: string;
+    action?: string;
+    resource_type?: string;
+    q?: string;
+    from?: string;
+    to?: string;
+  }
+): AuditLog[] {
+  const { user_id, action, resource_type, q, from, to } = params ?? {};
+  let items = [...logs].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  if (user_id) items = items.filter((l) => l.user_id === user_id);
+  if (action) {
+    items = items.filter((l) => l.action === action || l.action.startsWith(`${action}.`));
+  }
+  if (resource_type) items = items.filter((l) => l.resource_type === resource_type);
+  if (q) {
+    const needle = q.toLowerCase();
+    items = items.filter(
+      (l) =>
+        l.action.toLowerCase().includes(needle) ||
+        l.resource_type.toLowerCase().includes(needle) ||
+        (l.resource_id ?? "").toLowerCase().includes(needle) ||
+        (l.ip ?? "").includes(needle) ||
+        JSON.stringify(l.detail ?? {}).toLowerCase().includes(needle)
+    );
+  }
+  // ISO strings compare lexicographically, so plain string bounds work
+  if (from) items = items.filter((l) => l.created_at >= `${from}T00:00:00`);
+  if (to) items = items.filter((l) => l.created_at <= `${to}T23:59:59.999Z`);
+  return items;
+}
 
 // Walks the workflow graph in edge order and fabricates per-node results.
 function simulateWorkflowRun(workflow: Workflow, input: string): WorkflowRun {
@@ -1095,6 +1142,93 @@ export const mockApi = {
     sharedConversations: async (id: string) => {
       await delay(250);
       return ok(sharedConversationsStore[id] ?? []);
+    },
+  },
+
+  usage: {
+    summary: async () => {
+      await delay(300);
+      return ok(DEMO_USAGE_SUMMARY);
+    },
+    daily: async (_params?: { days?: number }) => {
+      await delay(300);
+      return ok({ items: DEMO_USAGE_DAILY });
+    },
+    byModel: async (_params?: { days?: number }) => {
+      await delay(300);
+      return ok({ items: DEMO_USAGE_BY_MODEL });
+    },
+    topConversations: async (_params?: { days?: number }) => {
+      await delay(300);
+      return ok({ items: DEMO_TOP_CONVERSATIONS });
+    },
+  },
+
+  audit: {
+    list: async (params?: {
+      action?: string;
+      resource_type?: string;
+      q?: string;
+      from?: string;
+      to?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      await delay(300);
+      // The user-facing endpoint only ever returns the current user's events
+      const filtered = filterAuditLogs(auditLogsStore, { ...params, user_id: DEMO_USER.id });
+      const offset = params?.offset ?? 0;
+      const limit = params?.limit ?? 20;
+      return ok({ items: filtered.slice(offset, offset + limit), total: filtered.length });
+    },
+  },
+
+  admin: {
+    stats: async () => {
+      await delay(300);
+      return ok(DEMO_ADMIN_STATS);
+    },
+    users: async (params?: { q?: string; limit?: number; offset?: number }) => {
+      await delay(300);
+      let items = [...adminUsersStore];
+      if (params?.q) {
+        const q = params.q.toLowerCase();
+        items = items.filter(
+          (u) => u.email.toLowerCase().includes(q) || u.username.toLowerCase().includes(q)
+        );
+      }
+      const total = items.length;
+      const offset = params?.offset ?? 0;
+      const limit = params?.limit ?? 50;
+      return ok({ items: items.slice(offset, offset + limit), total });
+    },
+    updateUser: async (
+      id: string,
+      data: { is_active?: boolean; is_admin?: boolean; monthly_token_quota?: number | null }
+    ) => {
+      await delay(300);
+      const existing = adminUsersStore.find((u) => u.id === id);
+      if (!existing) throw Object.assign(new Error("User not found"), { status: 404 });
+      adminUsersStore = adminUsersStore.map((u) => {
+        if (u.id !== id) return u;
+        const patch: Partial<AdminUser> = {};
+        if (data.is_active !== undefined) patch.is_active = data.is_active;
+        if (data.is_admin !== undefined) patch.is_admin = data.is_admin;
+        if (data.monthly_token_quota !== undefined) patch.monthly_token_quota = data.monthly_token_quota;
+        return { ...u, ...patch };
+      });
+      return ok(adminUsersStore.find((u) => u.id === id));
+    },
+    usageDaily: async (_params?: { days?: number }) => {
+      await delay(300);
+      return ok({ items: DEMO_ADMIN_USAGE_DAILY });
+    },
+    audit: async (params?: { user_id?: string; action?: string; limit?: number; offset?: number }) => {
+      await delay(300);
+      const filtered = filterAuditLogs(auditLogsStore, params);
+      const offset = params?.offset ?? 0;
+      const limit = params?.limit ?? 20;
+      return ok({ items: filtered.slice(offset, offset + limit), total: filtered.length });
     },
   },
 

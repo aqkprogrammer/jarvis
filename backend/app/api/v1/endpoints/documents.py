@@ -14,6 +14,7 @@ from app.core.security import get_current_user_flexible
 from app.models.document import Document
 from app.models.user import User
 from app.services import document_service
+from app.services.audit_service import audit
 
 router = APIRouter()
 
@@ -89,6 +90,8 @@ async def upload_document(
     await db.flush()
 
     document = await document_service.process_document(db, document, content)
+    await audit(db, current_user.id, "document.upload", "document", str(document.id),
+                detail={"filename": document.filename})
     return document
 
 
@@ -125,7 +128,10 @@ async def delete_document(
     document = await document_service.get_document(db, document_id, current_user.id)
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    filename = document.filename
     await document_service.delete_document(db, document)
+    await audit(db, current_user.id, "document.delete", "document", str(document_id),
+                detail={"filename": filename})
 
 
 @router.post("/search", response_model=List[DocumentSearchResult])

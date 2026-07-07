@@ -5,6 +5,7 @@ export interface User {
   username: string;
   display_name: string;
   avatar_url?: string;
+  is_admin?: boolean;
   created_at: string;
   updated_at: string;
   preferences: UserPreferences;
@@ -598,4 +599,79 @@ export interface PushSubscriptionPayload {
 
 export interface PushVapidKey {
   key: string;
+}
+
+// ==================== USAGE & COST TYPES ====================
+// Note: `DailyUsage`/`ModelUsage` above belong to the legacy analytics
+// endpoints — the /usage/* endpoints use the richer shapes below.
+
+export interface UsageSummary {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  /** Monthly token quota — null means unlimited. */
+  quota: number | null;
+  quota_used_pct: number | null;
+}
+
+export interface UsageDaily {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
+export interface UsageByModel {
+  model: string;
+  provider: string;
+  total_tokens: number;
+  cost_usd: number;
+  requests: number;
+}
+
+export interface TopConversationUsage {
+  conversation_id: string;
+  title: string;
+  total_tokens: number;
+  cost_usd: number;
+}
+
+// ==================== AUDIT LOG TYPES ====================
+export interface AuditLog {
+  id: string;
+  user_id: string;
+  /** Dot-namespaced action, e.g. "document.upload" — prefix drives UI color. */
+  action: string;
+  resource_type: string;
+  resource_id?: string | null;
+  detail?: Record<string, unknown> | null;
+  ip?: string | null;
+  created_at: string;
+}
+
+// ==================== ADMIN TYPES ====================
+export interface AdminStats {
+  users: { total: number; active: number };
+  conversations: number;
+  messages: number;
+  documents: number;
+  workflows: number;
+  schedules: { total: number; active: number };
+  tokens_30d: number;
+  cost_30d: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  username: string;
+  is_active: boolean;
+  is_admin: boolean;
+  /** null means unlimited */
+  monthly_token_quota: number | null;
+  created_at: string;
+  conversation_count: number;
+  tokens_30d: number;
+  cost_30d: number;
 }

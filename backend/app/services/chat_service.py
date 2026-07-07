@@ -14,6 +14,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.services.ai_provider import AIProviderFactory, CompletionResult
 from app.services.document_service import search_documents
 from app.services.memory_service import MemoryService
+from app.services.usage_service import record_usage
 
 logger = get_logger(__name__)
 
@@ -287,6 +288,17 @@ class ChatService:
             },
         )
 
+        # Cost/usage tracking (best-effort, never raises)
+        await record_usage(
+            self._db,
+            user_id,
+            provider.name,
+            result.model,
+            result.input_tokens,
+            result.output_tokens,
+            conversation_id=conv.id,
+        )
+
         # Auto-title conversation
         if not conv.title or conv.title == "New Conversation":
             conv.title = user_message[:80]
@@ -386,6 +398,20 @@ class ChatService:
             if not conv.title or conv.title == "New Conversation":
                 conv.title = user_message[:80]
             conv.updated_at = datetime.now(timezone.utc)
+
+            # Cost/usage tracking. Providers don't expose token counts when
+            # streaming, so estimate at ~4 characters per token.
+            est_input_tokens = sum(len(m["content"]) for m in history) // 4
+            await record_usage(
+                self._db,
+                user_id,
+                provider.name,
+                model or settings.DEFAULT_MODEL,
+                est_input_tokens,
+                len(full_content) // 4,
+                conversation_id=conv.id,
+                estimated=True,
+            )
 
             yield {
                 "type": "done",

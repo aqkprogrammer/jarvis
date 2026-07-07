@@ -368,6 +368,45 @@ export const api = {
       apiInstance.get(`/api/v1/workspaces/${id}/conversations`),
   },
 
+  // Usage & costs (current user)
+  usage: {
+    summary: () => apiInstance.get("/api/v1/usage/summary"),
+    daily: (params?: { days?: number }) =>
+      apiInstance.get("/api/v1/usage/daily", { params }),
+    byModel: (params?: { days?: number }) =>
+      apiInstance.get("/api/v1/usage/by-model", { params }),
+    topConversations: (params?: { days?: number }) =>
+      apiInstance.get("/api/v1/usage/top-conversations", { params }),
+  },
+
+  // Audit log (current user)
+  audit: {
+    list: (params?: {
+      action?: string;
+      resource_type?: string;
+      q?: string;
+      from?: string;
+      to?: string;
+      limit?: number;
+      offset?: number;
+    }) => apiInstance.get("/api/v1/audit", { params }),
+  },
+
+  // Admin (requires is_admin)
+  admin: {
+    stats: () => apiInstance.get("/api/v1/admin/stats"),
+    users: (params?: { q?: string; limit?: number; offset?: number }) =>
+      apiInstance.get("/api/v1/admin/users", { params }),
+    updateUser: (
+      id: string,
+      data: { is_active?: boolean; is_admin?: boolean; monthly_token_quota?: number | null }
+    ) => apiInstance.put(`/api/v1/admin/users/${id}`, data),
+    usageDaily: (params?: { days?: number }) =>
+      apiInstance.get("/api/v1/admin/usage/daily", { params }),
+    audit: (params?: { user_id?: string; action?: string; limit?: number; offset?: number }) =>
+      apiInstance.get("/api/v1/admin/audit", { params }),
+  },
+
   // Web push notifications
   push: {
     vapidKey: () => apiInstance.get("/api/v1/push/vapid-public-key"),

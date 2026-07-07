@@ -18,6 +18,7 @@ from app.schemas.chat import (
     MessageResponse,
     UsageInfo,
 )
+from app.services import usage_service
 from app.services.chat_service import ChatService
 
 router = APIRouter()
@@ -29,6 +30,15 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user_flexible),
 ):
+    # Monthly token quota (check failures never block chat)
+    if current_user.monthly_token_quota is not None and await usage_service.quota_exceeded(
+        db, current_user.id, current_user.monthly_token_quota
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Monthly token quota exceeded",
+        )
+
     svc = ChatService(db)
 
     if payload.stream:

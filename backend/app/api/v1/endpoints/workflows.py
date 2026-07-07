@@ -14,6 +14,7 @@ from app.core.security import get_current_user
 from app.models.user import User
 from app.models.workflow import Workflow, WorkflowRun
 from app.services import workflow_service
+from app.services.audit_service import audit
 
 router = APIRouter()
 
@@ -121,6 +122,8 @@ async def create_workflow(
     )
     db.add(workflow)
     await db.flush()
+    await audit(db, current_user.id, "workflow.create", "workflow", str(workflow.id),
+                detail={"name": workflow.name})
     return workflow
 
 
@@ -182,8 +185,11 @@ async def delete_workflow(
     current_user: User = Depends(get_current_user),
 ):
     workflow = await _get_owned_workflow(db, workflow_id, current_user.id)
+    name = workflow.name
     await db.delete(workflow)
     await db.flush()
+    await audit(db, current_user.id, "workflow.delete", "workflow", str(workflow_id),
+                detail={"name": name})
 
 
 @router.post("/{workflow_id}/run", response_model=WorkflowRunResponse)
@@ -196,6 +202,8 @@ async def run_workflow(
     workflow = await _get_owned_workflow(db, workflow_id, current_user.id)
     _validate_or_400(workflow.nodes, workflow.edges)
     run = await workflow_service.execute_workflow(db, workflow, input_text=payload.input)
+    await audit(db, current_user.id, "workflow.run", "workflow", str(workflow_id),
+                detail={"run_id": str(run.id), "status": run.status})
     return run
 
 

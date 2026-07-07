@@ -16,6 +16,7 @@ from app.models.schedule import Schedule
 from app.models.user import User
 from app.models.workflow import Workflow
 from app.services import scheduler_service
+from app.services.audit_service import audit
 
 router = APIRouter()
 
@@ -145,6 +146,8 @@ async def create_schedule(
     )
     db.add(schedule)
     await db.flush()
+    await audit(db, current_user.id, "schedule.create", "schedule", str(schedule.id),
+                detail={"name": schedule.name, "cron": schedule.cron})
     return schedule
 
 
@@ -191,8 +194,11 @@ async def delete_schedule(
     current_user: User = Depends(get_current_user),
 ):
     schedule = await _get_owned_schedule(db, schedule_id, current_user.id)
+    name = schedule.name
     await db.delete(schedule)
     await db.flush()
+    await audit(db, current_user.id, "schedule.delete", "schedule", str(schedule_id),
+                detail={"name": name})
 
 
 @router.post("/{schedule_id}/toggle", response_model=ScheduleResponse)

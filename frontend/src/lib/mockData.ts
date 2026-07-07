@@ -21,6 +21,13 @@ import type {
   WorkspaceInvite,
   SharedConversation,
   WorkspacePresenceUser,
+  UsageSummary,
+  UsageDaily,
+  UsageByModel,
+  TopConversationUsage,
+  AuditLog,
+  AdminStats,
+  AdminUser,
 } from "@/types";
 
 // ─── Demo credentials ────────────────────────────────────────────────────────
@@ -35,6 +42,7 @@ export const DEMO_USER: User = {
   username: "tony_stark",
   display_name: "Tony Stark",
   avatar_url: undefined,
+  is_admin: true,
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2026-06-27T00:00:00Z",
   preferences: {
@@ -703,3 +711,205 @@ export const DEMO_RESPONSES = [
 export function getRandomDemoResponse(): string {
   return DEMO_RESPONSES[Math.floor(Math.random() * DEMO_RESPONSES.length)];
 }
+
+// ─── Usage & costs ────────────────────────────────────────────────────────────
+
+function isoDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 30 days of per-day token usage ending today. Deterministic wobble derived
+ * from the date so the chart looks organic but stays stable across reloads;
+ * weekends dip to roughly a third of weekday volume.
+ */
+export const DEMO_USAGE_DAILY: UsageDaily[] = (() => {
+  const items: UsageDaily[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const dow = d.getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    // Pseudo-random factor in [0.75, 1.25) seeded by the calendar date
+    const seed = d.getDate() * 31 + (d.getMonth() + 1) * 7;
+    const wobble = 0.75 + (((seed * 9301 + 49297) % 233280) / 233280) * 0.5;
+    const total = Math.round((isWeekend ? 16_000 : 50_000) * wobble);
+    const input = Math.round(total * 0.62);
+    items.push({
+      date: isoDay(d),
+      input_tokens: input,
+      output_tokens: total - input,
+      cost_usd: Math.round(total * 7.04e-4) / 100, // ≈ $7.04 per 1M tokens blended
+    });
+  }
+  return items;
+})();
+
+const USAGE_30D_TOTALS = DEMO_USAGE_DAILY.reduce(
+  (acc, d) => ({
+    input: acc.input + d.input_tokens,
+    output: acc.output + d.output_tokens,
+    cost: acc.cost + d.cost_usd,
+  }),
+  { input: 0, output: 0, cost: 0 }
+);
+
+// ~1.24M tokens / ~$8.73 against a 5M monthly quota
+export const DEMO_USAGE_SUMMARY: UsageSummary = {
+  input_tokens: USAGE_30D_TOTALS.input,
+  output_tokens: USAGE_30D_TOTALS.output,
+  total_tokens: USAGE_30D_TOTALS.input + USAGE_30D_TOTALS.output,
+  cost_usd: Math.round(USAGE_30D_TOTALS.cost * 100) / 100,
+  quota: 5_000_000,
+  quota_used_pct:
+    Math.round(((USAGE_30D_TOTALS.input + USAGE_30D_TOTALS.output) / 5_000_000) * 1000) / 10,
+};
+
+export const DEMO_USAGE_BY_MODEL: UsageByModel[] = [
+  { model: "claude-sonnet-4-6", provider: "anthropic", total_tokens: 842_300, cost_usd: 6.21, requests: 512 },
+  { model: "claude-opus-4-5", provider: "anthropic", total_tokens: 96_400, cost_usd: 1.42, requests: 38 },
+  { model: "claude-haiku-4-5", provider: "anthropic", total_tokens: 214_800, cost_usd: 0.64, requests: 301 },
+  { model: "groq/llama-3.3-70b", provider: "groq", total_tokens: 86_500, cost_usd: 0.46, requests: 97 },
+];
+
+// Reuses the real demo conversation ids/titles so links resolve in demo mode
+export const DEMO_TOP_CONVERSATIONS: TopConversationUsage[] = [
+  { conversation_id: "conv-003", title: "Avengers Mission Debrief", total_tokens: 186_400, cost_usd: 1.41 },
+  { conversation_id: "conv-001", title: "Arc Reactor Efficiency Analysis", total_tokens: 124_900, cost_usd: 0.97 },
+  { conversation_id: "conv-004", title: "Python Code Review", total_tokens: 98_200, cost_usd: 0.72 },
+  { conversation_id: "conv-002", title: "Project IRON MAN Status", total_tokens: 61_400, cost_usd: 0.44 },
+];
+
+// ─── Audit log ────────────────────────────────────────────────────────────────
+// ~2 weeks of activity across every action prefix. Mostly the demo user;
+// a few rows from other users so the admin view has variety.
+export const DEMO_AUDIT_LOGS: AuditLog[] = [
+  { id: "aud-034", user_id: "demo-user-001", action: "auth.login", resource_type: "session", resource_id: null, detail: { method: "password" }, ip: "10.0.0.42", created_at: "2026-07-07T08:02:00Z" },
+  { id: "aud-033", user_id: "demo-user-001", action: "workflow.run", resource_type: "workflow", resource_id: "wf-001", detail: { name: "Morning Briefing", run_id: "run-001", duration_ms: 1946 }, ip: "10.0.0.42", created_at: "2026-07-06T08:00:02Z" },
+  { id: "aud-032", user_id: "ws-user-003", action: "workspace.share_conversation", resource_type: "workspace", resource_id: "ws-001", detail: { conversation_id: "conv-001" }, ip: "10.0.0.87", created_at: "2026-07-05T22:44:00Z" },
+  { id: "aud-031", user_id: "demo-user-001", action: "integration.test", resource_type: "integration", resource_id: "int-001", detail: { provider: "github", status: "connected" }, ip: "10.0.0.42", created_at: "2026-07-05T18:30:00Z" },
+  { id: "aud-030", user_id: "demo-user-001", action: "apikey.create", resource_type: "apikey", resource_id: "key-001", detail: { name: "Home Automation Hub" }, ip: "10.0.0.42", created_at: "2026-07-05T21:10:00Z" },
+  { id: "aud-029", user_id: "demo-user-001", action: "document.search", resource_type: "document", resource_id: null, detail: { query: "Mark 85 power budget", results: 3 }, ip: "10.0.0.42", created_at: "2026-07-05T16:22:00Z" },
+  { id: "aud-028", user_id: "demo-user-001", action: "auth.logout", resource_type: "session", resource_id: null, detail: null, ip: "10.0.0.42", created_at: "2026-07-04T23:41:00Z" },
+  { id: "aud-027", user_id: "demo-user-001", action: "workflow.run", resource_type: "workflow", resource_id: "wf-002", detail: { name: "Code Review Pipeline", run_id: "run-002", issues_found: 2 }, ip: "10.0.0.42", created_at: "2026-07-04T16:08:00Z" },
+  { id: "aud-026", user_id: "demo-user-001", action: "integration.action", resource_type: "integration", resource_id: "int-001", detail: { action: "summarize_pr", repo: "aqkprogrammer/jarvis", number: 48 }, ip: "10.0.0.42", created_at: "2026-07-04T15:25:00Z" },
+  { id: "aud-025", user_id: "demo-user-001", action: "auth.login", resource_type: "session", resource_id: null, detail: { method: "password" }, ip: "10.0.0.42", created_at: "2026-07-04T08:15:00Z" },
+  { id: "aud-024", user_id: "ws-user-002", action: "workspace.invite", resource_type: "workspace", resource_id: "ws-001", detail: { email: "rhodey@stark.io", role: "member" }, ip: "10.0.0.61", created_at: "2026-07-03T12:00:00Z" },
+  { id: "aud-023", user_id: "demo-user-001", action: "schedule.run_now", resource_type: "schedule", resource_id: "sched-002", detail: { name: "Weekday Standup Summary" }, ip: "10.0.0.42", created_at: "2026-07-03T09:01:00Z" },
+  { id: "aud-022", user_id: "demo-user-001", action: "document.upload", resource_type: "document", resource_id: "doc-003", detail: { filename: "research_paper.pdf", size_bytes: 5_912_004 }, ip: "10.0.0.42", created_at: "2026-07-02T10:28:00Z" },
+  { id: "aud-021", user_id: "demo-user-001", action: "workflow.update", resource_type: "workflow", resource_id: "wf-002", detail: { name: "Code Review Pipeline", changed: ["nodes", "edges"] }, ip: "10.0.0.42", created_at: "2026-07-02T16:10:00Z" },
+  { id: "aud-020", user_id: "demo-user-001", action: "integration.connect", resource_type: "integration", resource_id: "int-002", detail: { provider: "slack", name: "Team Slack" }, ip: "10.0.0.42", created_at: "2026-07-01T14:02:00Z" },
+  { id: "aud-019", user_id: "demo-user-001", action: "auth.login", resource_type: "session", resource_id: null, detail: { method: "password" }, ip: "192.168.1.7", created_at: "2026-07-01T07:58:00Z" },
+  { id: "aud-018", user_id: "demo-user-001", action: "schedule.toggle", resource_type: "schedule", resource_id: "sched-003", detail: { name: "Hourly System Check", is_active: false }, ip: "10.0.0.42", created_at: "2026-06-30T22:06:00Z" },
+  { id: "aud-017", user_id: "demo-user-001", action: "apikey.revoke", resource_type: "apikey", resource_id: "key-002", detail: { name: "Legacy CLI Token" }, ip: "10.0.0.42", created_at: "2026-06-30T11:34:00Z" },
+  { id: "aud-016", user_id: "ws-user-003", action: "auth.login", resource_type: "session", resource_id: null, detail: { method: "password" }, ip: "10.0.0.87", created_at: "2026-06-30T09:12:00Z" },
+  { id: "aud-015", user_id: "demo-user-001", action: "workspace.member_role", resource_type: "workspace", resource_id: "ws-001", detail: { user_id: "ws-user-002", role: "admin" }, ip: "10.0.0.42", created_at: "2026-06-29T17:20:00Z" },
+  { id: "aud-014", user_id: "demo-user-001", action: "document.delete", resource_type: "document", resource_id: "doc-009", detail: { filename: "old_specs_draft.docx" }, ip: "10.0.0.42", created_at: "2026-06-29T15:04:00Z" },
+  { id: "aud-013", user_id: "demo-user-001", action: "workflow.create", resource_type: "workflow", resource_id: "wf-002", detail: { name: "Code Review Pipeline", nodes: 4 }, ip: "10.0.0.42", created_at: "2026-06-28T14:20:00Z" },
+  { id: "aud-012", user_id: "demo-user-001", action: "auth.login_failed", resource_type: "session", resource_id: null, detail: { reason: "invalid_password", attempts: 1 }, ip: "203.0.113.9", created_at: "2026-06-28T03:17:00Z" },
+  { id: "aud-011", user_id: "demo-user-001", action: "schedule.create", resource_type: "schedule", resource_id: "sched-003", detail: { name: "Hourly System Check", cron: "0 * * * *" }, ip: "10.0.0.42", created_at: "2026-06-27T09:00:00Z" },
+  { id: "aud-010", user_id: "demo-user-001", action: "document.upload", resource_type: "document", resource_id: "doc-002", detail: { filename: "meeting_notes.md", size_bytes: 18_764 }, ip: "10.0.0.42", created_at: "2026-06-27T14:30:00Z" },
+  { id: "aud-009", user_id: "demo-user-001", action: "integration.connect", resource_type: "integration", resource_id: "int-001", detail: { provider: "github", name: "Personal GitHub" }, ip: "10.0.0.42", created_at: "2026-06-26T09:01:00Z" },
+  { id: "aud-008", user_id: "ws-user-004", action: "workspace.join", resource_type: "workspace", resource_id: "ws-001", detail: { via: "invite" }, ip: "10.0.0.93", created_at: "2026-06-26T14:05:00Z" },
+  { id: "aud-007", user_id: "demo-user-001", action: "workspace.create", resource_type: "workspace", resource_id: "ws-001", detail: { name: "JARVIS Team" }, ip: "10.0.0.42", created_at: "2026-06-25T09:00:00Z" },
+  { id: "aud-006", user_id: "demo-user-001", action: "schedule.update", resource_type: "schedule", resource_id: "sched-001", detail: { name: "Daily Morning Briefing", cron: "0 8 * * *" }, ip: "10.0.0.42", created_at: "2026-06-25T08:32:00Z" },
+  { id: "aud-005", user_id: "demo-user-001", action: "document.upload", resource_type: "document", resource_id: "doc-001", detail: { filename: "Q3_report.pdf", size_bytes: 2_483_112 }, ip: "10.0.0.42", created_at: "2026-06-24T09:15:00Z" },
+  { id: "aud-004", user_id: "demo-user-001", action: "workflow.create", resource_type: "workflow", resource_id: "wf-001", detail: { name: "Morning Briefing", nodes: 3 }, ip: "10.0.0.42", created_at: "2026-06-24T08:00:00Z" },
+  { id: "aud-003", user_id: "demo-user-001", action: "apikey.create", resource_type: "apikey", resource_id: "key-002", detail: { name: "Legacy CLI Token" }, ip: "192.168.1.7", created_at: "2026-06-23T09:00:00Z" },
+  { id: "aud-002", user_id: "demo-user-001", action: "auth.login", resource_type: "session", resource_id: null, detail: { method: "password" }, ip: "10.0.0.42", created_at: "2026-06-23T08:44:00Z" },
+  { id: "aud-001", user_id: "demo-user-001", action: "schedule.create", resource_type: "schedule", resource_id: "sched-001", detail: { name: "Daily Morning Briefing", cron: "0 8 * * *" }, ip: "10.0.0.42", created_at: "2026-06-23T08:30:00Z" },
+];
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+// Platform-wide daily usage ≈ 3.9× the demo user's own curve
+export const DEMO_ADMIN_USAGE_DAILY: UsageDaily[] = DEMO_USAGE_DAILY.map((d) => ({
+  date: d.date,
+  input_tokens: Math.round(d.input_tokens * 3.9),
+  output_tokens: Math.round(d.output_tokens * 3.9),
+  cost_usd: Math.round(d.cost_usd * 3.9 * 100) / 100,
+}));
+
+const ADMIN_30D_TOTALS = DEMO_ADMIN_USAGE_DAILY.reduce(
+  (acc, d) => ({ tokens: acc.tokens + d.input_tokens + d.output_tokens, cost: acc.cost + d.cost_usd }),
+  { tokens: 0, cost: 0 }
+);
+
+export const DEMO_ADMIN_STATS: AdminStats = {
+  users: { total: 5, active: 4 },
+  conversations: 147,
+  messages: 3_214,
+  documents: 23,
+  workflows: 9,
+  schedules: { total: 11, active: 7 },
+  tokens_30d: ADMIN_30D_TOTALS.tokens,
+  cost_30d: Math.round(ADMIN_30D_TOTALS.cost * 100) / 100,
+};
+
+export const DEMO_ADMIN_USERS: AdminUser[] = [
+  {
+    id: DEMO_USER.id,
+    email: DEMO_USER.email,
+    username: DEMO_USER.username,
+    is_active: true,
+    is_admin: true,
+    monthly_token_quota: 5_000_000,
+    created_at: "2025-01-01T00:00:00Z",
+    conversation_count: 38,
+    tokens_30d: DEMO_USAGE_SUMMARY.total_tokens,
+    cost_30d: DEMO_USAGE_SUMMARY.cost_usd,
+  },
+  {
+    id: "ws-user-002",
+    email: "tony@stark.io",
+    username: "tony",
+    is_active: true,
+    is_admin: true,
+    monthly_token_quota: null,
+    created_at: "2025-02-14T00:00:00Z",
+    conversation_count: 52,
+    tokens_30d: 1_872_400,
+    cost_30d: 13.18,
+  },
+  {
+    id: "ws-user-003",
+    email: "pepper@stark.io",
+    username: "pepper",
+    is_active: true,
+    is_admin: false,
+    monthly_token_quota: 2_000_000,
+    created_at: "2025-03-02T00:00:00Z",
+    conversation_count: 34,
+    tokens_30d: 1_214_800,
+    cost_30d: 8.55,
+  },
+  {
+    id: "ws-user-004",
+    email: "happy@stark.io",
+    username: "happy",
+    is_active: true,
+    is_admin: false,
+    monthly_token_quota: 1_000_000,
+    created_at: "2025-05-19T00:00:00Z",
+    conversation_count: 19,
+    tokens_30d: 486_200,
+    cost_30d: 3.41,
+  },
+  {
+    id: "usr-005",
+    email: "justin@hammer.io",
+    username: "jhammer",
+    is_active: false,
+    is_admin: false,
+    monthly_token_quota: 500_000,
+    created_at: "2025-08-30T00:00:00Z",
+    conversation_count: 4,
+    tokens_30d: 0,
+    cost_30d: 0,
+  },
+];

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,7 @@ from app.schemas.auth import (
     UserResponse,
     UserUpdate,
 )
+from app.services.audit_service import audit
 
 router = APIRouter()
 
@@ -49,18 +50,26 @@ async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-async def login(payload: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
+    ip = request.client.host if request.client else None
     if not user or not verify_password(payload.password, user.hashed_password):
+        await audit(db, user.id if user else None, "auth.login_failed", "user",
+                    payload.email, detail={"email": payload.email}, ip=ip)
+        await db.commit()  # persist the audit row before the 401 rolls back the session
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        await audit(db, user.id, "auth.login_failed", "user", str(user.id),
+                    detail={"reason": "inactive"}, ip=ip)
+        await db.commit()  # persist the audit row before the 403 rolls back the session
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
+    await audit(db, user.id, "auth.login", "user", str(user.id), ip=ip)
     return Token(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),

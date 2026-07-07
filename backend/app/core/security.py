@@ -142,6 +142,15 @@ async def get_current_superuser(current_user: Any = Depends(get_current_user)) -
     return current_user
 
 
+async def get_admin_user(current_user: Any = Depends(get_current_user)) -> Any:
+    """Require the platform admin flag (User.is_superuser) or raise 403."""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+        )
+    return current_user
+
+
 # ── Permission decorator ──────────────────────────────────────────────────────
 
 def require_role(*roles: str):

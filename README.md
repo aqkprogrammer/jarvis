@@ -86,6 +86,11 @@ A production-ready, full-stack AI assistant platform built with FastAPI, Next.js
 - **Real-time presence** — live online indicators for workspace members via WebSocket
 - **PWA** — installable app with offline shell, service worker caching, and push notification scaffolding (VAPID)
 
+### Admin & Observability
+- **Admin dashboard** — platform stats, user management (activate/deactivate, grant admin, per-user token quotas), platform-wide usage charts
+- **Cost tracker** — per-request token + USD cost recording across all providers, monthly summaries, daily charts, per-model and per-conversation breakdowns, quota enforcement (429 when exceeded)
+- **Audit log** — every sensitive action recorded (login, uploads, workflow runs, key creation…) with a searchable, filterable UI
+
 ### Infrastructure
 - **Authentication** — JWT access + refresh tokens, bcrypt passwords
 - **Background jobs** — Celery + Redis with celery-redbeat scheduler
@@ -409,6 +414,9 @@ Key endpoint groups:
 | `GET/POST /api/v1/workspaces` | Workspaces, members, invites, shared conversations |
 | `WS /ws/presence` | Real-time workspace presence |
 | `POST /api/v1/push/subscribe` | Web push subscription management |
+| `GET /api/v1/usage/*` | Token/cost summaries, daily series, by-model, top conversations |
+| `GET /api/v1/audit` | Searchable personal audit trail |
+| `GET/PUT /api/v1/admin/*` | Platform stats, user management, global usage & audit (admin only) |
 
 ---
 

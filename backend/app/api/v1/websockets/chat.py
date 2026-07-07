@@ -88,6 +88,25 @@ async def ws_chat(websocket: WebSocket, conversation_id: int):
                 # Stream AI response
                 async with AsyncSessionLocal() as db:
                     from app.services.chat_service import ChatService
+
+                    # Monthly token quota (check failures never block chat)
+                    try:
+                        from app.models.user import User
+                        from app.services import usage_service
+
+                        user = await db.get(User, user_id)
+                        quota = user.monthly_token_quota if user else None
+                    except Exception:
+                        quota = None
+                    if quota is not None and await usage_service.quota_exceeded(
+                        db, user_id, quota
+                    ):
+                        await websocket.send_json(
+                            {"type": "error", "error": "Monthly token quota exceeded"}
+                        )
+                        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                        return
+
                     svc = ChatService(db)
                     try:
                         gen = await svc.stream_chat(

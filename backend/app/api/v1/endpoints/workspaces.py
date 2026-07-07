@@ -16,6 +16,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceInvite, WorkspaceMember
+from app.services.audit_service import audit
 
 router = APIRouter()
 
@@ -209,6 +210,8 @@ async def create_workspace(
     await db.flush()
     db.add(WorkspaceMember(workspace_id=workspace.id, user_id=current_user.id, role="admin"))
     await db.flush()
+    await audit(db, current_user.id, "workspace.create", "workspace", str(workspace.id),
+                detail={"name": workspace.name})
     return _to_response(workspace, my_role="admin", member_count=1)
 
 
@@ -238,8 +241,11 @@ async def delete_workspace(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the workspace owner can delete it",
         )
+    name = workspace.name
     await db.delete(workspace)
     await db.flush()
+    await audit(db, current_user.id, "workspace.delete", "workspace", str(workspace_id),
+                detail={"name": name})
 
 
 # ── Endpoints: members ─────────────────────────────────────────────────────────
@@ -292,6 +298,8 @@ async def remove_member(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
     await db.delete(member)
     await db.flush()
+    await audit(db, current_user.id, "workspace.member_remove", "workspace", str(workspace_id),
+                detail={"removed_user_id": user_id})
 
 
 @router.put("/{workspace_id}/members/{user_id}", response_model=MemberResponse)
@@ -401,6 +409,8 @@ async def create_invite(
     )
     db.add(invite)
     await db.flush()
+    await audit(db, current_user.id, "workspace.invite_create", "workspace", str(workspace_id),
+                detail={"email": payload.email, "role": payload.role})
     return _invite_to_response(invite)
 
 
