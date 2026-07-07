@@ -192,6 +192,13 @@ app.include_router(presence_ws_router)
 
 # ── Health / Metrics ──────────────────────────────────────────────────────────
 
+@app.get(f"{settings.API_V1_STR}/health", tags=["system"])
+async def health_check_api() -> dict:
+    """Lightweight reachability probe (no DB/Redis) — used by the frontend
+    to decide between live and demo mode, so it must answer instantly."""
+    return {"status": "ok", "version": settings.APP_VERSION}
+
+
 @app.get("/health", tags=["system"])
 async def health_check() -> dict:
     db_health = await check_database_health()

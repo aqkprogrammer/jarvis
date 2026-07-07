@@ -10,6 +10,13 @@ interface WebSocketConfig {
   maxReconnectAttempts?: number;
 }
 
+/**
+ * Stable placeholder id for the assistant message currently being streamed.
+ * The backend only reveals the real message id in its final "done" frame,
+ * so chunks are attributed to this sentinel until completion.
+ */
+export const STREAMING_MESSAGE_ID = "streaming-response";
+
 class WebSocketManager {
   private ws: WebSocket | null = null;
   private config: WebSocketConfig;
@@ -19,6 +26,7 @@ class WebSocketManager {
   private reconnectAttempts = 0;
   private isIntentionalClose = false;
   private messageQueue: string[] = [];
+  private conversationId: string | null = null;
 
   constructor(config: WebSocketConfig) {
     this.config = {
@@ -29,19 +37,30 @@ class WebSocketManager {
     };
   }
 
-  connect(token?: string): void {
+  /** Connect to the per-conversation chat socket: /ws/chat/{conversationId}. */
+  connect(token?: string, conversationId?: string): void {
     if (token) {
       this.config.token = token;
     }
+    if (conversationId && conversationId !== this.conversationId) {
+      // Switching conversations — drop the old socket first.
+      this.conversationId = conversationId;
+      if (this.ws) {
+        this.isIntentionalClose = true;
+        this.ws.close(1000, "Switching conversation");
+        this.ws = null;
+      }
+    }
 
+    if (!this.conversationId || !this.config.token) {
+      return; // chat socket is per-conversation and authenticated
+    }
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
 
     this.isIntentionalClose = false;
-    const url = this.config.token
-      ? `${this.config.url}?token=${this.config.token}`
-      : this.config.url;
+    const url = `${this.config.url}/chat/${this.conversationId}?token=${this.config.token}`;
 
     try {
       this.ws = new WebSocket(url);
@@ -80,19 +99,67 @@ class WebSocketManager {
 
     this.ws.onmessage = (event) => {
       try {
-        const wsEvent: WSEvent = JSON.parse(event.data);
-        if (wsEvent.type === "pong") return;
-        this.emit(wsEvent.type, wsEvent.data);
+        // Backend chat protocol: flat frames {type, ...fields} —
+        // translate into the event names the UI subscribes to.
+        const frame = JSON.parse(event.data) as Record<string, unknown> & { type: string };
+        switch (frame.type) {
+          case "pong":
+            return;
+          case "ping":
+            this.sendRaw({ type: "pong" });
+            return;
+          case "connected":
+            return;
+          case "delta":
+            this.emit("message.chunk", {
+              message_id: STREAMING_MESSAGE_ID,
+              chunk: frame.delta as string,
+            });
+            return;
+          case "done":
+            this.emit("message.complete", frame);
+            return;
+          case "error":
+            this.emit("message.error", {
+              message_id: STREAMING_MESSAGE_ID,
+              error: (frame.error as string) || "Unknown error",
+            });
+            return;
+          default: {
+            // Enveloped events ({type, data}) from other producers
+            const wsEvent = frame as unknown as WSEvent;
+            this.emit(wsEvent.type, wsEvent.data ?? frame);
+          }
+        }
       } catch (error) {
         console.error("[WebSocket] Failed to parse message:", error);
       }
     };
   }
 
+  /** Send a frame exactly as given (backend chat WS reads top-level keys). */
+  sendRaw(frame: Record<string, unknown>): void {
+    const message = JSON.stringify(frame);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(message);
+    } else {
+      this.messageQueue.push(message);
+    }
+  }
+
+  /** Send a chat message; the reply streams back as message.chunk events. */
+  sendChatMessage(content: string, model?: string, documentIds?: string[]): void {
+    this.sendRaw({
+      type: "message",
+      content,
+      model,
+      document_ids: documentIds,
+    });
+  }
+
   private startHeartbeat(): void {
-    this.heartbeatTimer = setInterval(() => {
-      this.send("ping", {});
-    }, this.config.heartbeatInterval);
+    // The server drives keepalive (it pings every 30s; we reply "pong"
+    // in onmessage). No client-initiated heartbeat needed.
   }
 
   private stopHeartbeat(): void {

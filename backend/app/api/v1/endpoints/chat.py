@@ -5,16 +5,20 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user_flexible
+from app.models.conversation import Conversation
+from app.models.message import Message
 from app.models.user import User
 from app.schemas.chat import (
     ChatRequest,
     ChatResponse,
     ConversationCreate,
     ConversationResponse,
+    ConversationUpdate,
     MessageResponse,
     UsageInfo,
 )
@@ -142,3 +146,67 @@ async def clear_conversation(
     cleared = await svc.clear_messages(conversation_id, current_user.id)
     if not cleared:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def update_conversation(
+    conversation_id: int,
+    payload: ConversationUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+):
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    if payload.title is not None:
+        conv.title = payload.title
+    if payload.archived is not None:
+        conv.is_archived = payload.archived
+    await db.flush()
+    return conv
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def list_messages(
+    conversation_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+):
+    svc = ChatService(db)
+    conv = await svc.get_conversation_with_messages(conversation_id, current_user.id)
+    if not conv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    items = [MessageResponse.model_validate(m) for m in conv.messages]
+    return {"items": items, "total": len(items)}
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_message(
+    conversation_id: int,
+    message_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user_flexible),
+):
+    result = await db.execute(
+        select(Message)
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .where(
+            Message.id == message_id,
+            Message.conversation_id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+    )
+    msg = result.scalar_one_or_none()
+    if not msg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    await db.delete(msg)
+    await db.flush()

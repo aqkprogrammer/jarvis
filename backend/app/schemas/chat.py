@@ -34,6 +34,12 @@ class ConversationCreate(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class ConversationUpdate(BaseModel):
+    title: Optional[str] = None
+    # Frontend field name; maps onto Conversation.is_archived
+    archived: Optional[bool] = None
+
+
 class ConversationResponse(BaseModel):
     model_config = {"from_attributes": True}
 

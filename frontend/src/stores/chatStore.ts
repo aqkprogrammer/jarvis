@@ -7,6 +7,8 @@ import {
   StreamingState,
 } from "@/types";
 import { getApi, isDemoMode } from "@/lib/api";
+import { getWebSocketManager, STREAMING_MESSAGE_ID } from "@/lib/websocket";
+import { useAuthStore } from "@/stores/authStore";
 
 interface ChatState {
   conversations: ConversationSummary[];
@@ -52,7 +54,7 @@ export const useChatStore = create<ChatState>()(
     isLoadingConversations: false,
     isLoadingMessages: false,
     isSending: false,
-    selectedModel: "claude-3-5-sonnet-20241022",
+    selectedModel: "claude-sonnet-4-6",
     searchQuery: "",
 
     loadConversations: async () => {
@@ -158,6 +160,20 @@ export const useChatStore = create<ChatState>()(
         state.isSending = true;
       });
 
+      // Live mode: send over the chat WebSocket — the backend persists the
+      // user message and streams the assistant reply back as delta frames.
+      if (!isDemoMode()) {
+        const token = useAuthStore.getState().accessToken;
+        const ws = getWebSocketManager();
+        ws.connect(token || undefined, currentConversation.id);
+        get().startStreaming(currentConversation.id, STREAMING_MESSAGE_ID);
+        ws.sendChatMessage(content, selectedModel, documentIds);
+        set((state) => {
+          state.isSending = false;
+        });
+        return;
+      }
+
       try {
         const response = await getApi().messages.send(
           currentConversation.id,
@@ -175,7 +191,7 @@ export const useChatStore = create<ChatState>()(
 
         // Demo mode has no WebSocket stream — poll once for the simulated
         // assistant reply that mockApi pushes after a short delay.
-        if (isDemoMode()) {
+        {
           const convId = currentConversation.id;
           setTimeout(async () => {
             try {

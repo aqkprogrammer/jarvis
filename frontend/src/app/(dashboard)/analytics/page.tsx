@@ -37,13 +37,13 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
 export default function AnalyticsPage() {
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
     queryKey: ["analytics-daily"],
-    queryFn: () => api.analytics.daily({ days: 30 }).then((r) => r.data),
+    queryFn: () => getApi().analytics.daily({ days: 30 }).then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   });
 
   const { data: modelsData, isLoading: modelsLoading } = useQuery({
     queryKey: ["analytics-models"],
-    queryFn: () => api.analytics.models().then((r) => r.data),
+    queryFn: () => getApi().analytics.models().then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -414,7 +414,7 @@ export default function AnalyticsPage() {
                 topConversations.map((c) => (
                   <Link
                     key={c.conversation_id}
-                    href={`/chat?conversation=${c.conversation_id}`}
+                    href={`/chat?id=${c.conversation_id}`}
                     className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg hover:bg-primary/5 transition-colors group"
                   >
                     <span className="flex-1 min-w-0 truncate text-xs font-mono text-jarvis-text group-hover:text-primary transition-colors">

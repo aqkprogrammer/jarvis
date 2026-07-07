@@ -61,6 +61,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def create_tables() -> None:
     """Create all tables (dev/test only – use Alembic in production)."""
+    # Ensure every model is registered on Base.metadata before create_all —
+    # otherwise tables for models not yet imported are silently skipped.
+    import app.models  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

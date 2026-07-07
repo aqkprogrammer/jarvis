@@ -4,12 +4,9 @@ import { useEffect, useCallback, useRef } from "react";
 import { useChatStore } from "@/stores/chatStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
-import { getWebSocketManager } from "@/lib/websocket";
-import {
-  MessageChunkEvent,
-  MessageCompleteEvent,
-  WSEvent,
-} from "@/types";
+import { getWebSocketManager, STREAMING_MESSAGE_ID } from "@/lib/websocket";
+import { isDemoMode } from "@/lib/api";
+import { Message, MessageChunkEvent } from "@/types";
 
 export function useChat(conversationId?: string) {
   const wsManager = getWebSocketManager();
@@ -40,11 +37,12 @@ export function useChat(conversationId?: string) {
   const { accessToken } = useAuthStore();
   const { addNotification } = useUIStore();
 
-  // Setup WebSocket connection
+  // Setup WebSocket connection — per-conversation, live mode only
+  // (demo mode has no backend; mockApi simulates the assistant reply).
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken || !conversationId || isDemoMode()) return;
 
-    wsManager.connect(accessToken);
+    wsManager.connect(accessToken, conversationId);
 
     const unsubChunk = wsManager.on("message.chunk", (data) => {
       const event = data as MessageChunkEvent;
@@ -53,9 +51,25 @@ export function useChat(conversationId?: string) {
     });
 
     const unsubComplete = wsManager.on("message.complete", (data) => {
-      const event = data as MessageCompleteEvent;
+      // Backend "done" frame: {conversation_id, message_id, model, provider}.
+      const done = data as {
+        conversation_id: number;
+        message_id: number;
+        model?: string;
+        provider?: string;
+      };
       if (!mountedRef.current) return;
-      completeStreaming(event.message_id, event.message);
+      const streamed = useChatStore.getState().streaming.content;
+      const finalMessage: Message = {
+        id: String(done.message_id),
+        conversation_id: String(done.conversation_id),
+        role: "assistant",
+        content: streamed,
+        status: "complete",
+        created_at: new Date().toISOString(),
+        meta: { model: done.model, provider: done.provider },
+      };
+      completeStreaming(STREAMING_MESSAGE_ID, finalMessage);
     });
 
     const unsubError = wsManager.on("message.error", (data) => {
@@ -66,20 +80,12 @@ export function useChat(conversationId?: string) {
       addNotification("error", "Message Error", event.error);
     });
 
-    const unsubToolStart = wsManager.on("tool.start", (data) => {
-      const event = data as { tool_name: string; message_id: string };
-      if (!mountedRef.current) return;
-      // Tool call started - update UI
-    });
-
     return () => {
-      mountedRef.current = false;
       unsubChunk();
       unsubComplete();
       unsubError();
-      unsubToolStart();
     };
-  }, [accessToken]);
+  }, [accessToken, conversationId]);
 
   // Load conversation when ID changes
   useEffect(() => {

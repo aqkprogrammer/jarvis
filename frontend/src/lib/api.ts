@@ -121,30 +121,33 @@ export const api = {
     refresh: () => apiInstance.post("/api/v1/auth/refresh"),
   },
 
-  // Conversations
+  // Conversations — served by the backend chat router (/api/v1/chat/...)
   conversations: {
     list: (params?: { page?: number; per_page?: number; archived?: boolean }) =>
-      apiInstance.get("/api/v1/conversations", { params }),
-    get: (id: string) => apiInstance.get(`/api/v1/conversations/${id}`),
+      apiInstance.get("/api/v1/chat/conversations", { params }),
+    get: (id: string) => apiInstance.get(`/api/v1/chat/conversations/${id}`),
     create: (data: { title?: string; model?: string; system_prompt?: string }) =>
-      apiInstance.post("/api/v1/conversations", data),
+      apiInstance.post("/api/v1/chat/conversations", data),
     update: (id: string, data: Partial<{ title: string; archived: boolean; pinned: boolean; tags: string[] }>) =>
-      apiInstance.patch(`/api/v1/conversations/${id}`, data),
-    delete: (id: string) => apiInstance.delete(`/api/v1/conversations/${id}`),
+      apiInstance.patch(`/api/v1/chat/conversations/${id}`, data),
+    delete: (id: string) => apiInstance.delete(`/api/v1/chat/conversations/${id}`),
     messages: (id: string, params?: { page?: number; per_page?: number }) =>
-      apiInstance.get(`/api/v1/conversations/${id}/messages`, { params }),
+      apiInstance.get(`/api/v1/chat/conversations/${id}/messages`, { params }),
   },
 
-  // Messages
+  // Messages — live sends go over the chat WebSocket (see chatStore);
+  // this REST path is the non-streaming fallback.
   messages: {
     send: (conversationId: string, content: string, model?: string, documentIds?: string[]) =>
-      apiInstance.post(`/api/v1/conversations/${conversationId}/messages`, {
-        content,
+      apiInstance.post("/api/v1/chat", {
+        message: content,
+        conversation_id: Number(conversationId),
         model,
         document_ids: documentIds,
+        stream: false,
       }),
     delete: (conversationId: string, messageId: string) =>
-      apiInstance.delete(`/api/v1/conversations/${conversationId}/messages/${messageId}`),
+      apiInstance.delete(`/api/v1/chat/conversations/${conversationId}/messages/${messageId}`),
   },
 
   // Documents (RAG)
