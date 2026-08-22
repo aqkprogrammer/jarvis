@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -67,15 +67,15 @@ class Settings(BaseSettings):
     DEEPGRAM_API_KEY: Optional[str] = None
 
     # ── CORS / Hosts ──────────────────────────────────────────────────────────
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: Annotated[List[str], NoDecode] = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8080",
     ]
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: List[str] = ["*"]
-    CORS_ALLOW_HEADERS: List[str] = ["*"]
-    ALLOWED_HOSTS: List[str] = ["*"]
+    CORS_ALLOW_METHODS: Annotated[List[str], NoDecode] = ["*"]
+    CORS_ALLOW_HEADERS: Annotated[List[str], NoDecode] = ["*"]
+    ALLOWED_HOSTS: Annotated[List[str], NoDecode] = ["*"]
 
     # ── Rate Limiting ─────────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -110,6 +110,34 @@ class Settings(BaseSettings):
     OPENTELEMETRY_ENDPOINT: Optional[str] = None
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False  # True in production
+
+    @field_validator(
+        "CORS_ORIGINS",
+        "CORS_ALLOW_METHODS",
+        "CORS_ALLOW_HEADERS",
+        "ALLOWED_HOSTS",
+        mode="before",
+    )
+    @classmethod
+    def split_comma_separated(cls, v: Any) -> Any:
+        """Accept `a,b,c` from the environment as well as a JSON array.
+
+        These fields are annotated NoDecode so the settings source hands the
+        raw string through: pydantic-settings otherwise JSON-decodes complex
+        fields inside EnvSettingsSource, before any validator runs, and a plain
+        comma-separated value (the format used by config/.env.example and
+        docker-compose) raises SettingsError at import.
+        """
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("["):
+                import json
+
+                return json.loads(v)
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
     @field_validator("SECRET_KEY")
     @classmethod

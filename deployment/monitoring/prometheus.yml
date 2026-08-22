@@ -19,10 +19,6 @@ scrape_configs:
       - targets: ["jarvis-backend:8000"]
     metrics_path: "/metrics"
 
-  - job_name: "redis"
-    static_configs:
-      - targets: ["redis:6379"]
-
-  - job_name: "postgres"
-    static_configs:
-      - targets: ["postgres:5432"]
+# NOTE: redis:6379 and postgres:5432 do not speak the Prometheus exposition
+# format. Scraping them directly only produces permanently-DOWN targets — add
+# redis_exporter / postgres_exporter to the compose stack to collect those.

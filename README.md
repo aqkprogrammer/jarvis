@@ -1,53 +1,143 @@
 # JARVIS — Just A Rather Very Intelligent System
 
-A production-ready, full-stack AI assistant platform: FastAPI backend, Next.js 14 frontend, multi-agent orchestration, RAG document chat, visual workflow automation, voice, integrations, team workspaces, and a complete admin/observability layer — all deployable with Docker.
+A full-stack AI assistant platform: FastAPI backend, Next.js 14 frontend,
+multi-agent orchestration, RAG document chat, visual workflow automation, voice,
+third-party integrations, team workspaces, and an admin/observability layer.
 
-**Try it with zero setup:** the frontend ships with a full demo mode. If the backend isn't running, it automatically falls back to realistic static data — every page works offline.
-
-```
-Demo login →  demo@jarvis.ai / jarvis2025
-```
+The whole stack — app, datastores, workers, reverse proxy and monitoring — runs
+from a single `docker compose` command.
 
 ---
 
 ## Table of Contents
 
-- [Quick Start (60 seconds, demo mode)](#quick-start-60-seconds-demo-mode)
+- [Quick Start (Docker)](#quick-start-docker)
 - [Features](#features)
 - [Architecture](#architecture)
-- [Full Local Setup (live backend)](#full-local-setup-live-backend)
-- [Docker (full stack)](#docker-full-stack)
+- [Configuration](#configuration)
+- [Demo Mode (no backend)](#demo-mode-no-backend)
+- [Local Development (without Docker)](#local-development-without-docker)
 - [Make Targets](#make-targets)
-- [Environment Variables](#environment-variables)
 - [Using the Platform](#using-the-platform)
 - [API Overview](#api-overview)
 - [Project Structure](#project-structure)
+- [Container Notes](#container-notes)
 - [Development Notes](#development-notes)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Quick Start (60 seconds, demo mode)
+## Quick Start (Docker)
 
-No database, no API keys, no backend — just Node 18+:
+Requires Docker Desktop (or Docker Engine + Compose v2). Nothing else — no Python,
+no Node, no local Postgres.
+
+**1 — Configure**
 
 ```bash
 git clone https://github.com/aqkprogrammer/jarvis.git
-cd jarvis/frontend
-npm install --legacy-peer-deps
-npm run dev
+cd jarvis
+cp config/.env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The app detects the backend is offline (3-second health probe), switches to **demo mode** (amber banner), and shows the demo credentials on the login screen with an auto-fill button:
+Edit `.env` and set these three:
 
-| Field | Value |
+```bash
+SECRET_KEY=<paste the output of: openssl rand -hex 32>
+ANTHROPIC_API_KEY=sk-ant-...      # or OPENAI_API_KEY / GROQ_API_KEY / GOOGLE_API_KEY
+ADMIN_EMAIL=you@example.com       # this account is auto-granted admin on startup
+```
+
+Then point the datastore URLs at the compose service names (not `localhost` —
+the backend resolves these over the compose network):
+
+```bash
+DATABASE_URL=postgresql+asyncpg://jarvis:jarvis_secret@postgres:5432/jarvis
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/1
+CELERY_RESULT_BACKEND=redis://redis:6379/2
+QDRANT_URL=http://qdrant:6333
+NEXT_PUBLIC_API_URL=http://localhost
+NEXT_PUBLIC_WS_URL=ws://localhost
+```
+
+**2 — Build and start**
+
+Run from the repo root. `--env-file` is required: Compose resolves `.env` relative
+to the compose file's directory, not your shell's working directory.
+
+```bash
+docker compose --env-file .env -f deployment/docker/docker-compose.yml up --build -d
+```
+
+Or simply `make docker-up` (it passes `--env-file .env` for you).
+
+First build takes roughly 10 minutes and produces a ~2.5 GB backend image —
+`sentence-transformers` pulls in PyTorch. On first use the backend also downloads
+the `all-MiniLM-L6-v2` embedding model (~90 MB) inside the container.
+
+**3 — Wait for health, then open the app**
+
+```bash
+docker compose --env-file .env -f deployment/docker/docker-compose.yml ps
+```
+
+All ten services should report `healthy` (Prometheus and Grafana report `Up`;
+they ship no healthcheck). Then open **http://localhost**.
+
+**4 — Create your account**
+
+The login screen is login-only; register once via the API:
+
+```bash
+curl -X POST http://localhost/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","username":"you","password":"your-password"}'
+```
+
+If the email matches `ADMIN_EMAIL`, restart the backend once to be granted admin:
+
+```bash
+docker compose --env-file .env -f deployment/docker/docker-compose.yml restart jarvis-backend
+```
+
+### Service URLs
+
+| Service | URL |
 |---|---|
-| Email | `demo@jarvis.ai` |
-| Password | `jarvis2025` |
+| **App (via Nginx)** | **http://localhost** |
+| Frontend (direct) | http://localhost:3000 |
+| Backend API (direct) | http://localhost:8000 |
+| Swagger / ReDoc | http://localhost:8000/docs · `/redoc` |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3001 (`admin` / `admin`) |
+| Qdrant dashboard | http://localhost:6333/dashboard |
 
-Everything works against in-memory demo data: chat (with simulated streaming replies and reasoning traces), documents, workflows, schedules, integrations, workspaces, audit log, and the admin dashboard (the demo user is an admin). Click **Retry backend** in the banner any time to switch to live mode.
+Postgres (5432), Redis (6379) and Qdrant (6333/6334) are published on `127.0.0.1`
+only — reachable from your machine, not from the LAN.
 
----
+### Everyday commands
+
+```bash
+make docker-up        # start (build if needed)
+make docker-logs      # tail all logs
+make docker-ps        # service status
+make docker-down      # stop, keep data
+make shell-db         # psql into the database
+make shell-backend    # bash inside the backend container
+```
+
+To wipe all data volumes: append `-v` to the `down` command.
+
+After changing backend Python code, rebuild that image:
+
+```bash
+docker compose --env-file .env -f deployment/docker/docker-compose.yml up -d --build jarvis-backend
+```
+
+`NEXT_PUBLIC_*` values are baked into the browser bundle at build time, so
+changing them requires `--build` on `jarvis-frontend`.
+
 
 ## Features
 
@@ -60,6 +150,10 @@ Everything works against in-memory demo data: chat (with simulated streaming rep
 
 ### Multi-Agent System
 Planner, research, coding, browser (Playwright), vision, automation, memory, calendar, email, and security agents built on a ReAct-loop base agent, dispatched by a priority-queue orchestrator. Three memory layers: Redis (short-term), PostgreSQL (long-term), Qdrant (semantic).
+
+> The default Docker image leaves out the browser, desktop-control and local-Whisper
+> dependencies, so those specific agents need extra packages — see
+> [Container Notes](#container-notes). Everything else in this list works out of the box.
 
 ### Automation
 - **Visual workflow builder** — drag-and-drop canvas (React Flow): trigger → agent → condition → output nodes, per-node results, run history
@@ -87,141 +181,165 @@ Planner, research, coding, browser (Playwright), vision, automation, memory, cal
 
 ## Architecture
 
+The Compose stack runs ten containers:
+
 ```
-                    ┌──────────────────────────────┐
-                    │      NGINX (reverse proxy)    │   ← Docker mode only
-                    └───────────────┬──────────────┘
-                                    │
-              ┌─────────────────────┼─────────────────────┐
-              │                     │                     │
-      ┌───────▼───────┐    ┌───────▼────────┐    ┌───────▼───────┐
-      │  Next.js 14    │    │    FastAPI      │    │  WebSockets    │
-      │  (frontend)    │───▶│  /api/v1/*      │    │  /ws/chat/{id} │
-      │  :3000         │    │  :8000          │    │  /ws/presence  │
-      └───────────────┘    └───────┬────────┘    └───────────────┘
-                                    │
-        ┌──────────────┬────────────┼────────────┬──────────────┐
-        │              │            │            │              │
-  ┌─────▼─────┐ ┌──────▼─────┐ ┌────▼────┐ ┌─────▼─────┐ ┌─────▼─────┐
-  │ PostgreSQL │ │   Redis    │ │ Qdrant  │ │  Celery   │ │ Scheduler │
-  │  (data)   │ │ (cache/mq) │ │(vectors)│ │ (workers) │ │ (asyncio) │
-  └───────────┘ └────────────┘ └─────────┘ └───────────┘ └───────────┘
+                          browser
+                             │  :80
+                   ┌─────────▼──────────┐
+                   │       NGINX        │   /        → frontend
+                   │  (reverse proxy)   │   /api/v1/ → backend
+                   └────┬──────────┬────┘   /ws/     → backend (upgrade)
+                        │          │
+            ┌───────────▼──┐   ┌───▼──────────────┐
+            │  Next.js 14  │   │     FastAPI      │
+            │   :3000      │   │  :8000  + /ws/*  │
+            └──────────────┘   └───┬──────────────┘
+                                   │
+     ┌──────────────┬──────────────┼──────────────┬────────────────┐
+     │              │              │              │                │
+┌────▼─────┐  ┌─────▼────┐   ┌─────▼────┐   ┌─────▼─────┐   ┌──────▼──────┐
+│ Postgres │  │  Redis   │   │  Qdrant  │   │  Celery   │   │  Celery     │
+│  (data)  │  │ (cache/  │   │ (vectors)│   │  worker   │   │  beat       │
+│          │  │  broker) │   │          │   │           │   │  (RedBeat)  │
+└──────────┘  └──────────┘   └──────────┘   └───────────┘   └─────────────┘
+
+        Prometheus ──scrapes──▶ FastAPI /metrics ──▶ Grafana :3001
 ```
 
 - The frontend probes `GET /api/v1/health` on startup → live mode if reachable, demo mode otherwise.
 - Chat messages are sent over `WS /ws/chat/{conversation_id}` and stream back token by token.
-- Workflows/schedules run in-process (asyncio); heavy agent tasks can route through Celery.
+- Workflows and schedules run in-process on asyncio inside the API server; only heavy
+  agent tasks route through Celery. Celery beat uses RedBeat, which stores its
+  schedule on the broker database.
+- Postgres, Redis and Qdrant sit on an internal-only Docker network; the backend,
+  frontend, workers, Nginx and the monitoring pair are additionally on an external
+  bridge so they can publish ports and reach the internet.
 
 ---
 
-## Full Local Setup (live backend)
+## Configuration
 
-### Prerequisites
+Everything is driven by a single `.env` at the repo root — the backend reads it
+directly, and Compose interpolates it into the container environment.
+`config/.env.example` is the annotated full list. The ones that matter:
 
-| Tool | Version | Required for |
+| Variable | Required | Purpose |
 |---|---|---|
-| Python | 3.11+ | backend |
-| Node.js | 18+ | frontend |
-| PostgreSQL | 15+ | backend (required) |
-| Redis | 7+ | backend (required) |
-| Qdrant | latest | RAG + semantic memory (optional but recommended) |
-| Docker | latest | easiest way to run the three services above |
+| `SECRET_KEY` | ✅ | JWT signing — `openssl rand -hex 32`. Startup fails in production with the default. |
+| `DATABASE_URL` | ✅ | `postgresql+asyncpg://user:pass@host:5432/db` |
+| `REDIS_URL` | ✅ | cache + rate limiting |
+| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY` / `GROQ_API_KEY` / `GOOGLE_API_KEY`) | ✅ one | at least one LLM provider, or chat returns a provider error |
+| `QDRANT_URL` | – | vector store for RAG + semantic memory; those features degrade gracefully without it |
+| `ADMIN_EMAIL` | – | auto-grants admin to this account on startup |
+| `ENVIRONMENT` | – | `development` (default) builds the schema from the ORM and enables `/docs`; `production` does neither |
+| `DEFAULT_AI_PROVIDER` / `DEFAULT_MODEL` | – | defaults: `anthropic` / `claude-sonnet-4-6` |
+| `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | – | default to Redis DB 1 / 2 |
+| `WEB_CONCURRENCY` | – | gunicorn workers (default 2 in Compose). Each loads PyTorch, so this is the main memory lever. |
+| `ENABLE_CODE_EXECUTION` | – | gates the `/execute` sandbox (default `true`) |
+| `ELEVENLABS_API_KEY`, `ASSEMBLYAI_API_KEY`, `DEEPGRAM_API_KEY` | – | voice providers |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | – | web push — `npx web-push generate-vapid-keys` |
+| `API_BASE_URL` | – | public base used to build webhook and invite URLs |
+| `CORS_ORIGINS`, `ALLOWED_HOSTS` | – | comma-separated **or** a JSON array; both forms are accepted |
 
-### 1. Clone + environment
+**Frontend URLs.** `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` must be an
+**origin**, not a path — `frontend/src/lib/api.ts` appends `/api/v1/...` itself.
+Use `http://localhost` / `ws://localhost` behind the Compose Nginx, or
+`http://localhost:8000` / `ws://localhost:8000` when running the backend directly.
+They are compiled into the browser bundle, so a change needs an image rebuild.
+
+**Host ports.** Override any published port via `.env`: `BACKEND_PORT`,
+`FRONTEND_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, `QDRANT_HTTP_PORT`,
+`PROMETHEUS_PORT`, `GRAFANA_PORT`, `NGINX_PORT`.
+
+---
+
+## Demo Mode (no backend)
+
+The frontend ships with a complete in-memory demo dataset. If it cannot reach the
+backend within a 3-second health probe it switches to demo mode (amber banner) and
+every page keeps working — chat with simulated streaming, documents, workflows,
+schedules, integrations, workspaces, audit log and the admin dashboard.
 
 ```bash
-git clone https://github.com/aqkprogrammer/jarvis.git
-cd jarvis
-cp config/.env.example .env
+cd frontend
+npm ci
+npm run dev
 ```
 
-Edit `.env` — the minimum for a working live backend:
+Open http://localhost:3000 and sign in with the credentials shown on the login
+screen (there is an auto-fill button):
+
+| Field | Value |
+|---|---|
+| Email | `demo@jarvis.ai` |
+| Password | `jarvis2025` |
+
+Click **Retry backend** in the banner to switch to live mode once a backend is up.
+
+---
+
+## Local Development (without Docker)
+
+Use this when you want hot-reload on the Python side. Requires Python 3.11+ and
+Node 18+.
+
+**1 — Infrastructure.** Start just the datastores in Docker and leave the app on
+your host:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://jarvis:jarvis@localhost:5432/jarvis_db
+docker compose --env-file .env -f deployment/docker/docker-compose.yml up -d postgres redis qdrant
+```
+
+**2 — Point `.env` at localhost** (these override the compose-network hostnames):
+
+```bash
+DATABASE_URL=postgresql+asyncpg://jarvis:jarvis_secret@localhost:5432/jarvis
 REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=$(openssl rand -hex 32)     # paste the value, don't leave the command
-ANTHROPIC_API_KEY=sk-ant-...           # or OPENAI_API_KEY / GROQ_API_KEY / GOOGLE_API_KEY
-QDRANT_URL=http://localhost:6333       # optional; RAG/memory degrade gracefully without it
-ADMIN_EMAIL=you@example.com            # this account is auto-granted admin on startup
+QDRANT_URL=http://localhost:6333
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8000
 ```
 
-### 2. Start infrastructure (one-liners via Docker)
-
-```bash
-docker run -d --name jarvis-pg    -e POSTGRES_USER=jarvis -e POSTGRES_PASSWORD=jarvis -e POSTGRES_DB=jarvis_db -p 5432:5432 postgres:15-alpine
-docker run -d --name jarvis-redis -p 6379:6379 redis:7-alpine
-docker run -d --name jarvis-qdrant -p 6333:6333 qdrant/qdrant   # optional
-```
-
-### 3. Backend
+**3 — Backend:**
 
 ```bash
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
-
-cd backend
-uvicorn app.main:app --reload --port 8000
+make dev-backend
 ```
 
-**Tables are created automatically on first startup** (SQLAlchemy `create_all` in dev). The raw SQL files in `database/schemas/` are reference documentation, not the boot path; Alembic scaffolding exists for production migrations (see [Development Notes](#development-notes)).
+Run it from the **repo root**, not from `backend/`. Modules are launched as
+`backend.app.*` but import each other as `app.*`, so both the repo root and
+`backend/` must be importable — `make dev-backend` sets `PYTHONPATH=.:backend`
+for you. The raw equivalent is:
 
-Verify: [http://localhost:8000/api/v1/docs](http://localhost:8000/api/v1/docs) (Swagger) and `curl http://localhost:8000/api/v1/health` → `{"status":"ok"}`.
+```bash
+PYTHONPATH=.:backend uvicorn backend.app.main:app --reload --port 8000
+```
 
-### 4. Frontend
+Tables are created from the ORM on first startup (`create_all`, dev only).
+Verify with `curl http://localhost:8000/api/v1/health` and open
+http://localhost:8000/docs.
+
+**4 — Frontend:**
 
 ```bash
 cd frontend
-npm install --legacy-peer-deps
-cp .env.local.example .env.local 2>/dev/null || printf 'NEXT_PUBLIC_API_URL=http://localhost:8000\nNEXT_PUBLIC_WS_URL=ws://localhost:8000\n' > .env.local
+npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — the banner should NOT appear (live mode).
-
-### 5. Create your account
-
-The login page is login-only; register via the API once:
+**5 — Optional workers.** The cron scheduler for workflows and prompts runs
+in-process inside the API server, so these are only needed for heavy agent tasks:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "you@example.com", "username": "you", "password": "your-password"}'
+make dev-worker    # Celery worker
+make dev-beat      # Celery beat (RedBeat scheduler)
 ```
 
-If `ADMIN_EMAIL` in `.env` matches, this account becomes an **admin** on the next backend restart (Admin item appears in the sidebar).
-
-### 6. Optional workers
-
-```bash
-# Celery worker (heavy agent tasks) — from repo root, venv active
-make dev-worker
-# Celery beat (periodic jobs)
-make dev-beat
-```
-
-The built-in schedule runner (cron workflows/prompts) needs no extra process — it runs inside the API server.
-
----
-
-## Docker (full stack)
-
-Runs everything: PostgreSQL, Redis, Qdrant, backend, frontend, Celery worker + beat, Nginx, Prometheus, Grafana.
-
-```bash
-cp config/.env.example .env    # fill in SECRET_KEY + at least one AI key
-docker compose -f deployment/docker/docker-compose.yml up --build -d
-```
-
-| Service | URL |
-|---|---|
-| App (via Nginx) | http://localhost |
-| Backend API docs | http://localhost/api/v1/docs |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3001 |
-
-Stop: `docker compose -f deployment/docker/docker-compose.yml down` (add `-v` to wipe data).
+`make dev` starts the backend and frontend together.
 
 ---
 
@@ -236,37 +354,12 @@ Stop: `docker compose -f deployment/docker/docker-compose.yml down` (add `-v` to
 | `make test` / `make test-backend` / `make test-frontend` | Test suites |
 | `make lint` / `make format` / `make typecheck` | Ruff + ESLint / formatters / mypy + tsc |
 | `make migrate` / `make migrate-create` | Alembic upgrade / autogenerate revision |
-| `make docker-up` / `make docker-down` / `make docker-logs` | Compose stack controls |
+| `make docker-up` / `make docker-down` / `make docker-logs` / `make docker-ps` | Compose stack controls (all pass `--env-file .env`) |
+| `make build` | Build both Docker images |
+| `make shell-backend` / `make shell-db` | Shell into the backend container / psql |
 | `make db-reset` | Drop + recreate dev database |
 | `make env-check` | Verify required env vars are set |
 | `make help` | List everything |
-
----
-
-## Environment Variables
-
-Backend reads `.env` at the repo root (see `config/.env.example` for the full annotated list). The important ones:
-
-| Variable | Required | Purpose |
-|---|---|---|
-| `DATABASE_URL` | ✅ | `postgresql+asyncpg://user:pass@host:5432/db` |
-| `REDIS_URL` | ✅ | cache, Celery broker |
-| `SECRET_KEY` | ✅ | JWT signing — `openssl rand -hex 32` (startup fails in production with the default) |
-| `ANTHROPIC_API_KEY` (or OpenAI/Groq/Google) | ✅ one | at least one LLM provider |
-| `QDRANT_URL` | – | vector DB for RAG + semantic memory (features degrade without it) |
-| `ADMIN_EMAIL` | – | auto-grant admin to this account on startup |
-| `DEFAULT_MODEL` / `DEFAULT_PROVIDER` | – | defaults: `claude-sonnet-4-6` / `anthropic` |
-| `ENABLE_CODE_EXECUTION` | – | gate the `/execute` sandbox (default `true`) |
-| `ELEVENLABS_API_KEY`, `ASSEMBLYAI_API_KEY`, `DEEPGRAM_API_KEY` | – | voice providers |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | – | web push (`npx web-push generate-vapid-keys`) |
-| `API_BASE_URL` | – | public base used in webhook/invite URLs (default `http://localhost:8000`) |
-
-Frontend reads `frontend/.env.local`:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | REST base |
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8000` | WebSocket base |
 
 ---
 
@@ -277,10 +370,11 @@ Frontend reads `frontend/.env.local`:
 - **Schedules** — cron presets or custom expressions targeting a workflow or a raw prompt; toggle, run-now, and see last/next run.
 - **API keys** — Settings → API Keys → generate; then:
   ```bash
-  curl -X POST http://localhost:8000/api/v1/chat \
+  curl -X POST http://localhost/api/v1/chat \
     -H "X-API-Key: jrv_..." -H "Content-Type: application/json" \
     -d '{"message": "Hello JARVIS", "stream": false}'
   ```
+  (use `http://localhost:8000` instead when running the backend directly)
 - **Integrations** — connect GitHub (PAT with `repo` scope) to get repo browsing + AI PR summaries; Slack/Discord/Notion for messaging and pages.
 - **Webhooks** — *Incoming*: create a trigger linked to a workflow and POST anything to the generated `/api/v1/hooks/{token}` URL. *Outgoing*: subscribe a URL to events; payloads are HMAC-SHA256 signed (`X-Jarvis-Signature`) when you set a secret.
 - **Workspaces** — create a team, copy invite links, share conversations; online members show in the header.
@@ -291,7 +385,9 @@ Frontend reads `frontend/.env.local`:
 
 ## API Overview
 
-Interactive docs: **Swagger** `http://localhost:8000/api/v1/docs` · **ReDoc** `/api/v1/redoc`
+Interactive docs: **Swagger** http://localhost:8000/docs · **ReDoc** http://localhost:8000/redoc
+(both are disabled when `ENVIRONMENT=production`). Routes are served under
+`/api/v1`, and through Nginx the prefix is preserved — `http://localhost/api/v1/...`.
 
 | Area | Endpoints |
 |---|---|
@@ -347,9 +443,46 @@ Jarvis/
 
 ---
 
+## Container Notes
+
+Details worth knowing before you change the deployment.
+
+- **Schema provisioning.** The backend runs with `ENVIRONMENT=development`, so
+  SQLAlchemy's `create_all()` builds the schema from the ORM models on startup.
+  `database/schemas/*.sql` is deliberately **not** mounted as a Postgres init
+  script — it has drifted from the models (UUID vs. integer primary keys, missing
+  `is_superuser` and `monthly_token_quota`). Reconcile that SQL, or generate an
+  Alembic baseline, before switching to `ENVIRONMENT=production`.
+- **Backend dependencies.** The image installs
+  `deployment/docker/requirements.backend.txt`, not `backend/requirements.txt`.
+  It omits packages that cannot work headless (`pyautogui`, `mss`) or that
+  duplicate an installed capability (`easyocr`, `chromadb`, `openai-whisper`,
+  `playwright`); the file header records each exclusion and why. Add them back
+  there if you need those agents. Torch is installed from the CPU wheel index —
+  the default aarch64 wheels drag in ~4 GB of CUDA libraries.
+- **Import path.** The image sets `PYTHONPATH=/app:/app/backend` for the same
+  `backend.app.*` vs `app.*` reason described under local development.
+- **Nginx.** Compose mounts `deployment/nginx/nginx.local.conf` (HTTP only), which
+  preserves the `/api` prefix the backend actually serves on and resolves upstreams
+  through Docker's DNS at request time so restarting a container doesn't strand
+  Nginx on a stale IP. The production `nginx.conf` redirects `:80 → :443` and needs
+  certificates under `/etc/nginx/certs`; switch to it with `NGINX_CONF=nginx.conf`
+  once you have TLS.
+- **Networks.** `jarvis-internal` is marked `internal: true`. Docker configures no
+  NAT for such a network, so any service that publishes a host port or calls an
+  external API must *also* be attached to `jarvis-external`.
+- **Known gap.** The sidebar's **Agents** entry points at `/agents`, for which no
+  page exists under `frontend/src/app/(dashboard)/` — it renders a 404. The backend
+  endpoint (`GET /api/v1/agents`) and the `AgentStatus` component are both present
+  and unused, so that page still needs to be built. Every other sidebar destination
+  works against the live backend.
+
+---
+
 ## Development Notes
 
-- **Verification gates**: `python3 -m compileall backend/app` · `cd frontend && npx tsc --noEmit && npx next build`
+- **Verification gates**: `python3 -m compileall backend/app` · `cd frontend && npx tsc --noEmit && npx next build`. The frontend Docker build runs `tsc` as part of `next build`, so a type error fails the image build.
+- **Import path**: backend modules are launched as `backend.app.*` but import each other as `app.*`. Anything that starts them must put both the repo root and `backend/` on `PYTHONPATH` (`make dev-backend` and the Docker image both do).
 - **Demo-mode rule**: every new method in `frontend/src/lib/api.ts` must be mirrored in `mockApi.ts` (+ data in `mockData.ts`) so the app keeps working offline.
 - **Migrations**: dev uses ORM `create_all` on startup. For production, generate the initial Alembic revision from the models: `alembic revision --autogenerate -m "initial"` then `alembic upgrade head` (config at `alembic.ini`, env in `database/migrations/`).
 - **Schema files vs ORM**: `database/schemas/*.sql` are reference-style (UUID ids) and predate the ORM's integer PKs — don't provision from them directly; the ORM is the source of truth.
@@ -359,16 +492,28 @@ Jarvis/
 
 ## Troubleshooting
 
+First stop for anything Docker-related:
+
+```bash
+docker compose --env-file .env -f deployment/docker/docker-compose.yml ps
+docker compose --env-file .env -f deployment/docker/docker-compose.yml logs jarvis-backend
+```
+
 | Symptom | Cause / fix |
 |---|---|
-| Amber "DEMO MODE" banner with backend running | Backend not reachable at `NEXT_PUBLIC_API_URL` — check `curl http://localhost:8000/api/v1/health`, then click **Retry backend** |
-| `SECRET_KEY` error on startup | You're in `ENVIRONMENT=production` with the default key — set a real one |
-| Chat replies never stream | WebSocket blocked — verify `ws://localhost:8000/ws/chat/1?token=...` isn't being stripped by a proxy; in Docker, Nginx handles the upgrade headers |
-| Document upload stuck "processing" | Qdrant not running (`QDRANT_URL`) or unsupported file type — check the document's error chip |
-| "Run" on JS code returns 400 | Node.js isn't installed on the backend host (`node -e` is the JS sandbox) |
-| HTTP 429 on chat | Monthly token quota exceeded — an admin can raise/clear it in Admin → users |
-| Slack/GitHub actions fail | Re-run **Test connection** on the Integrations page; check token scopes (`repo` for GitHub) |
-| Ports in use | 3000 (frontend), 8000 (backend), 5432/6379/6333 (infra) — stop conflicting services |
+| `required variable SECRET_KEY is missing a value` | You ran `docker compose` without `--env-file .env`, or from a directory where Compose can't see it. Run from the repo root with the flag, or use `make docker-up`. |
+| `SECRET_KEY` error on backend startup | `ENVIRONMENT=production` with the default key — set a real one (`openssl rand -hex 32`) |
+| Amber "DEMO MODE" banner with the backend running | The browser can't reach `NEXT_PUBLIC_API_URL`. Check `curl http://localhost/api/v1/health`, then click **Retry backend**. Remember these URLs are baked in at build time — changing them needs `--build`. |
+| `502 Bad Gateway` from Nginx | The backend is still starting (give it ~40 s) or crash-looping — check its logs. |
+| Chat returns a provider error on the first message | No LLM key in `.env`. Add one, then `up -d jarvis-backend celery-worker`. |
+| Chat replies never stream | WebSocket blocked. Verify the upgrade reaches `/ws/chat/{id}?token=...`; the bundled Nginx config already forwards the upgrade headers. |
+| Document upload stuck "processing" | Qdrant unreachable (`QDRANT_URL`) or an unsupported file type — check the document's error chip |
+| "Run" on a JS code block returns 400 | Node.js isn't available to the backend (`node -e` is the JS sandbox); it is not installed in the backend image |
+| HTTP 429 on chat | Monthly token quota exceeded — an admin can raise or clear it in Admin → Users |
+| Admin item missing from the sidebar | The account isn't a superuser. Set `ADMIN_EMAIL` to its email and restart the backend. |
+| `/agents` shows a 404 | Known gap — that page was never built; see [Container Notes](#container-notes) |
+| Ports already in use | 80 (Nginx), 3000, 8000, 5432, 6379, 6333, 9090, 3001. Override any of them via the `*_PORT` variables in `.env`. |
+| Backend OOM-killed during heavy use | Each gunicorn worker loads PyTorch. Lower `WEB_CONCURRENCY`, or raise Docker Desktop's memory limit. |
 
 ---
 

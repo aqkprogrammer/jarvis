@@ -64,7 +64,7 @@ class Workflow(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User")
-    runs: Mapped[list] = relationship(
+    runs: Mapped[List["WorkflowRun"]] = relationship(
         "WorkflowRun",
         back_populates="workflow",
         lazy="selectin",

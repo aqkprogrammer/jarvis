@@ -26,25 +26,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install poetry==1.8.2
+# Copy only the dependency manifest first (cache layer)
+COPY deployment/docker/requirements.backend.txt ./requirements.txt
 
-# Copy only dependency files first (cache layer)
-COPY pyproject.toml poetry.lock* ./
-
-# Install dependencies (no dev deps, no virtualenv inside Docker)
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --without dev --no-root
+# sentence-transformers pulls torch, and recent torch wheels for linux/aarch64
+# carry the CUDA runtime (~4 GB of nvidia-* + triton) that is dead weight on a
+# CPU-only container. Install the CPU build first so the resolver reuses it.
+RUN pip install --upgrade pip setuptools wheel \
+    && pip install --index-url https://download.pytorch.org/whl/cpu torch \
+    && pip install -r requirements.txt
 
 # ---------------------------------------------------------------------------
 # Stage 2: Production image
 # ---------------------------------------------------------------------------
 FROM python:3.11-slim AS production
 
+# PYTHONPATH: modules are launched as `backend.app.*` but import each other as
+# `app.*`, so backend/ must be on the path; /app covers agents/, core/, voice/.
+# HF_HOME: sentence-transformers downloads all-MiniLM-L6-v2 here on first use.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH" \
-    APP_HOME=/app
+    APP_HOME=/app \
+    PYTHONPATH=/app:/app/backend \
+    HF_HOME=/app/.cache/huggingface
 
 # Runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -77,8 +81,10 @@ WORKDIR $APP_HOME
 # Copy application source
 COPY --chown=jarvis:jarvis . .
 
-# Create required directories
-RUN mkdir -p uploads logs && chown -R jarvis:jarvis uploads logs
+# Create required directories (incl. the HF model cache and gunicorn's control
+# socket dir, both written at runtime by the non-root user)
+RUN mkdir -p uploads logs .cache/huggingface .gunicorn \
+    && chown -R jarvis:jarvis uploads logs .cache .gunicorn
 
 # Switch to non-root user
 USER jarvis
@@ -90,14 +96,18 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -sf http://localhost:8000/health || exit 1
 
+# Worker count comes from WEB_CONCURRENCY (gunicorn reads it natively). Each
+# worker imports torch via sentence-transformers, so this is the main lever on
+# the container's memory footprint.
+ENV WEB_CONCURRENCY=4
+
 # Production server with Uvicorn + Gunicorn
 CMD ["gunicorn", \
      "backend.app.main:app", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \
-     "--workers", "4", \
      "--bind", "0.0.0.0:8000", \
      "--timeout", "120", \
-     "--keepalive", "5", \
+     "--keep-alive", "5", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
      "--log-level", "info"]

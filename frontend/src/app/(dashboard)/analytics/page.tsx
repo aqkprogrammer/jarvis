@@ -34,6 +34,15 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   );
 };
 
+/** Normalise a list response: bare array, { items: [...] }, or { data: [...] }. */
+function toArray<T>(payload: unknown): T[] {
+  if (Array.isArray(payload)) return payload as T[];
+  const wrapped = payload as { items?: unknown; data?: unknown } | null | undefined;
+  if (Array.isArray(wrapped?.items)) return wrapped.items as T[];
+  if (Array.isArray(wrapped?.data)) return wrapped.data as T[];
+  return [];
+}
+
 export default function AnalyticsPage() {
   const { data: dailyData, isLoading: dailyLoading } = useQuery({
     queryKey: ["analytics-daily"],
@@ -81,8 +90,12 @@ export default function AnalyticsPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const daily: DailyUsage[] = dailyData?.data || dailyData || [];
-  const models: ModelUsage[] = modelsData?.data || modelsData || [];
+  // The live API wraps list responses as { items: [...] }; the demo API returns
+  // a bare array. Without the `items` branch these stay objects and the
+  // `.slice()` calls below throw "A.slice is not a function", taking down the
+  // whole analytics route.
+  const daily: DailyUsage[] = toArray<DailyUsage>(dailyData);
+  const models: ModelUsage[] = toArray<ModelUsage>(modelsData);
 
   const modelsByCost = [...usageByModel].sort((a, b) => b.cost_usd - a.cost_usd);
   const topModel = modelsByCost[0];

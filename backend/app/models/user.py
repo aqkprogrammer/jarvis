@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import BigInteger, Boolean, DateTime, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -41,9 +41,9 @@ class User(Base):
     )
 
     # Relationships
-    conversations: Mapped[list] = relationship("Conversation", back_populates="user", lazy="selectin")
-    memories: Mapped[list] = relationship("Memory", back_populates="user", lazy="selectin")
-    tasks: Mapped[list] = relationship("Task", back_populates="user", lazy="selectin")
+    conversations: Mapped[List["Conversation"]] = relationship("Conversation", back_populates="user", lazy="selectin")
+    memories: Mapped[List["Memory"]] = relationship("Memory", back_populates="user", lazy="selectin")
+    tasks: Mapped[List["Task"]] = relationship("Task", back_populates="user", lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email}>"

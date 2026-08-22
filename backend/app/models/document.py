@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -43,7 +43,7 @@ class Document(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User")
-    chunks: Mapped[list] = relationship(
+    chunks: Mapped[List["DocumentChunk"]] = relationship(
         "DocumentChunk",
         back_populates="document",
         lazy="selectin",

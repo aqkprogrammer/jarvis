@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -46,7 +46,7 @@ class Conversation(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="conversations")
-    messages: Mapped[list] = relationship(
+    messages: Mapped[List["Message"]] = relationship(
         "Message",
         back_populates="conversation",
         lazy="selectin",

@@ -355,7 +355,7 @@ export const mockApi = {
         messagesStore[conversationId].push(assistantMsg);
         conversations = conversations.map((c) =>
           c.id === conversationId
-            ? { ...c, last_message: assistantMsg.content as string, last_message_at: assistantMsg.created_at, message_count: c.message_count + 2 }
+            ? { ...c, last_message: assistantMsg.content as string, last_message_at: assistantMsg.created_at, message_count: (c.message_count ?? 0) + 2 }
             : c
         );
       }, 0);

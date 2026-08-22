@@ -73,6 +73,7 @@ async def login(payload: UserLogin, request: Request, db: AsyncSession = Depends
     return Token(
         access_token=create_access_token(user.id),
         refresh_token=create_refresh_token(user.id),
+        user=UserResponse.model_validate(user),
     )
 
 

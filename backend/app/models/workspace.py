@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import List
+
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -49,13 +51,13 @@ class Workspace(Base):
 
     # Relationships
     owner: Mapped["User"] = relationship("User")
-    members: Mapped[list] = relationship(
+    members: Mapped[List["WorkspaceMember"]] = relationship(
         "WorkspaceMember",
         back_populates="workspace",
         lazy="selectin",
         cascade="all, delete-orphan",
     )
-    invites: Mapped[list] = relationship(
+    invites: Mapped[List["WorkspaceInvite"]] = relationship(
         "WorkspaceInvite",
         back_populates="workspace",
         lazy="selectin",

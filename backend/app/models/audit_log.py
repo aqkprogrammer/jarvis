@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, JSON, ForeignKey
+from sqlalchemy import String, DateTime, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from app.core.database import Base
 
@@ -9,9 +9,10 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
+    # Stored as a string, not an FK: audit_service writes str(user_id) and the
+    # audit endpoint filters on str(current_user.id). An audit trail should also
+    # outlive the user row it references, so no ON DELETE behaviour is wanted.
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     resource_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     resource_id: Mapped[str | None] = mapped_column(String, nullable=True)

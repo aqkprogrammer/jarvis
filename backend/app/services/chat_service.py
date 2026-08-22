@@ -50,6 +50,11 @@ class ChatService:
         conv = Conversation(user_id=user_id, title=title or "New Conversation")
         self._db.add(conv)
         await self._db.flush()
+        # A freshly constructed instance has no loaded `messages` collection —
+        # lazy="selectin" only applies to query loads. Without this refresh,
+        # serializing the object into ConversationResponse touches the unloaded
+        # relationship outside the greenlet context and raises MissingGreenlet.
+        await self._db.refresh(conv)
         return conv
 
     async def list_conversations(

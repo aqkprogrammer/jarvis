@@ -37,6 +37,9 @@ fi
 export ENVIRONMENT=development
 export DEBUG=true
 export LOG_LEVEL=DEBUG
+# Modules are launched as `backend.app.*` but import each other as `app.*`, so
+# backend/ must be importable; PROJECT_ROOT covers agents/, core/ and voice/.
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/backend${PYTHONPATH:+:$PYTHONPATH}"
 
 # ---------------------------------------------------------------------------
 # Trap for cleanup

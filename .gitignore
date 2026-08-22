@@ -114,7 +114,8 @@ jest_html_reporters_attach/
 # ---------------------------------------------------------------------------
 # Docker
 # ---------------------------------------------------------------------------
-.dockerignore
+# .dockerignore is NOT ignored: the backend image does `COPY . .`, so without it
+# the build context bakes in .git, node_modules and .env.
 docker-compose.override.yml
 docker-compose.local.yml
 

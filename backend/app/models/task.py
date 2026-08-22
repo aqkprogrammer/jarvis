@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -45,7 +45,7 @@ class Task(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="tasks")
-    subtasks: Mapped[list] = relationship(
+    subtasks: Mapped[List["Task"]] = relationship(
         "Task",
         # self-referential: the many-to-one "parent" side needs remote_side
         backref=backref("parent", remote_side="Task.id"),

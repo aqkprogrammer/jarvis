@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Emit .next/standalone so the production Docker image can run `node server.js`
+  output: "standalone",
   reactStrictMode: true,
   swcMinify: true,
   images: {

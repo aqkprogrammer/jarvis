@@ -97,18 +97,23 @@ export interface Conversation {
   metadata?: Record<string, unknown>;
 }
 
+// NOTE: this is the shape the demo dataset returns. The live backend's
+// GET /api/v1/chat/conversations returns ConversationResponse, which supplies
+// only id/title/created_at/updated_at/is_archived/messages — the remaining
+// fields are optional so live mode type-checks and renders.
 export interface ConversationSummary {
   id: string;
   title: string;
-  model: string;
-  message_count: number;
-  token_count: number;
+  model?: string;
+  message_count?: number;
+  token_count?: number;
   last_message?: string;
-  last_message_at: string;
+  last_message_at?: string;
   created_at: string;
-  archived: boolean;
-  pinned: boolean;
-  tags: string[];
+  updated_at?: string;
+  archived?: boolean;
+  pinned?: boolean;
+  tags?: string[];
 }
 
 // ==================== MEMORY TYPES ====================

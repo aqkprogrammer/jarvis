@@ -10,6 +10,25 @@ import { ConversationSummary } from "@/types";
 import { cn } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 
+/**
+ * Relative time that tolerates a missing or unparseable timestamp.
+ *
+ * The live backend's ConversationResponse has no `last_message_at` (only
+ * created_at/updated_at) — that field comes from the demo dataset. Passing
+ * `new Date(undefined)` to date-fns throws RangeError: Invalid time value,
+ * which took down the whole chat route in live mode.
+ */
+function relativeTime(...candidates: Array<string | undefined | null>): string {
+  for (const value of candidates) {
+    if (!value) continue;
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return formatDistanceToNow(date, { addSuffix: false });
+    }
+  }
+  return "";
+}
+
 interface ConversationListProps {
   conversations: ConversationSummary[];
   currentId?: string;
@@ -164,7 +183,7 @@ function ConvItem({ conv, isActive, menuOpen, onSelect, onMenuToggle, onDelete, 
             {conv.title}
           </p>
           <span className="text-xs font-mono text-jarvis-text-muted shrink-0 mt-0.5">
-            {formatDistanceToNow(new Date(conv.last_message_at), { addSuffix: false })}
+            {relativeTime(conv.last_message_at, conv.updated_at, conv.created_at)}
           </span>
         </div>
         {conv.last_message && (

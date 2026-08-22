@@ -8,8 +8,14 @@
 # Detect docker compose command
 DOCKER_COMPOSE := $(shell command -v docker-compose 2>/dev/null || echo "docker compose")
 COMPOSE_FILE   := deployment/docker/docker-compose.yml
+# The root .env must be passed explicitly: Compose resolves .env relative to the
+# compose file's directory, not the directory make runs in.
+ENV_FILE       := --env-file .env
 VENV           := .venv
 PYTHON         := $(VENV)/bin/python
+# Modules are launched as `backend.app.*` but import each other as `app.*`, so
+# backend/ must be on the path; `.` covers agents/, core/ and voice/.
+export PYTHONPATH := .:backend
 PIP            := $(VENV)/bin/pip
 BACKEND_DIR    := backend
 FRONTEND_DIR   := frontend
@@ -103,7 +109,7 @@ test-integration:  ## Run integration tests (requires running services)
 
 build:  ## Build all Docker images
 	@echo "$(BLUE)Building Docker images...$(NC)"
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) build
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) build
 
 build-backend:  ## Build backend Docker image only
 	@docker build -f deployment/docker/Dockerfile.backend \
@@ -123,29 +129,29 @@ build-frontend:  ## Build frontend Docker image only
 
 docker-up:  ## Start all Docker services
 	@echo "$(GREEN)Starting Docker services...$(NC)"
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) up -d
 	@echo "$(GREEN)Services started. Run 'make docker-logs' to view logs.$(NC)"
 
 docker-down:  ## Stop all Docker services
 	@echo "$(YELLOW)Stopping Docker services...$(NC)"
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) down
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) down
 
 docker-down-volumes:  ## Stop Docker services and remove volumes (DESTRUCTIVE)
 	@echo "$(YELLOW)WARNING: This will delete all data volumes!$(NC)"
 	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ]
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) down -v
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) down -v
 
 docker-restart:  ## Restart all Docker services
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) restart
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) restart
 
 docker-logs:  ## Tail logs from all services
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) logs -f --tail=100
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) logs -f --tail=100
 
 docker-ps:  ## Show running Docker containers
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) ps
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) ps
 
 docker-pull:  ## Pull latest base images
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) pull
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) pull
 
 ## ─────────────────────────────────────────────────────────────────────────────
 ## Database
@@ -177,7 +183,7 @@ db-reset:  ## Drop and recreate the database (DESTRUCTIVE)
 	@echo "$(GREEN)Database reset complete$(NC)"
 
 shell-db:  ## Open a psql shell in the database container
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec postgres \
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) exec postgres \
 		psql -U jarvis -d jarvis
 
 ## ─────────────────────────────────────────────────────────────────────────────
@@ -208,7 +214,7 @@ typecheck:  ## Run mypy type checker
 ##@ Utilities
 
 shell-backend:  ## Open a shell in the backend container
-	@$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec jarvis-backend bash
+	@$(DOCKER_COMPOSE) $(ENV_FILE) -f $(COMPOSE_FILE) exec jarvis-backend bash
 
 shell:  ## Open Python REPL with app context
 	@$(VENV)/bin/python -c "import asyncio; from backend.app.main import app; print('App loaded'); import IPython; IPython.embed()"

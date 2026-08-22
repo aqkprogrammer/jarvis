@@ -1,0 +1,41 @@
+# Version control
+.git
+.gitignore
+
+# Secrets — env is injected by compose, never baked into the image
+.env
+.env.*
+!.env.example
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+coverage.xml
+*.egg-info
+dist
+build
+
+# Node / Next.js (frontend image copies frontend/ explicitly)
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/out
+
+# Local artifacts
+uploads
+logs
+*.log
+.DS_Store
+.idea
+.vscode
+
+# Docs / tooling not needed at runtime
+README.md
+Makefile
