@@ -148,11 +148,17 @@ class WebSocketManager {
   }
 
   /** Send a chat message; the reply streams back as message.chunk events. */
-  sendChatMessage(content: string, model?: string, documentIds?: string[]): void {
+  sendChatMessage(
+    content: string,
+    model?: string,
+    documentIds?: string[],
+    provider?: string,
+  ): void {
     this.sendRaw({
       type: "message",
       content,
       model,
+      provider,
       document_ids: documentIds,
     });
   }

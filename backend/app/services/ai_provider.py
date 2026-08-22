@@ -39,6 +39,22 @@ class CompletionResult:
 
 class AIProvider(ABC):
     name: str = "base"
+    DEFAULT_MODEL: str = ""
+
+    def _resolve_model(self, model: Optional[str]) -> str:
+        """Pick the model for a request.
+
+        Order: the caller's explicit choice, then `DEFAULT_MODEL` from settings
+        when this provider *is* the configured default provider, then the
+        class-level fallback. The middle step is what makes `DEFAULT_MODEL` in
+        .env actually take effect — without it each provider silently pinned its
+        own hardcoded constant, which goes stale as vendors retire models.
+        """
+        if model:
+            return model
+        if self.name == settings.DEFAULT_AI_PROVIDER and settings.DEFAULT_MODEL:
+            return settings.DEFAULT_MODEL
+        return self.DEFAULT_MODEL
 
     @abstractmethod
     async def complete(
@@ -102,7 +118,7 @@ class AnthropicProvider(AIProvider):
         tools: Optional[List[Dict]] = None,
     ) -> CompletionResult:
         kwargs: Dict[str, Any] = dict(
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             max_tokens=max_tokens,
             temperature=temperature,
             messages=messages,
@@ -131,7 +147,7 @@ class AnthropicProvider(AIProvider):
         tools: Optional[List[Dict]] = None,
     ) -> AsyncIterator[str]:
         kwargs: Dict[str, Any] = dict(
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             max_tokens=max_tokens,
             temperature=temperature,
             messages=messages,
@@ -181,7 +197,7 @@ class OpenAIProvider(AIProvider):
         all_messages.extend(messages)
 
         kwargs: Dict[str, Any] = dict(
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             messages=all_messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -213,7 +229,7 @@ class OpenAIProvider(AIProvider):
         all_messages.extend(messages)
 
         kwargs: Dict[str, Any] = dict(
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             messages=all_messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -263,7 +279,7 @@ class GroqProvider(AIProvider):
         all_messages.extend(messages)
 
         resp = await self._client.chat.completions.create(
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             messages=all_messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -291,7 +307,7 @@ class GroqProvider(AIProvider):
         all_messages.extend(messages)
 
         resp = await self._client.chat.completions.create(
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             messages=all_messages,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -310,7 +326,8 @@ class GroqProvider(AIProvider):
 
 class GoogleProvider(AIProvider):
     name = "google"
-    DEFAULT_MODEL = "gemini-2.0-flash"
+    # gemini-2.0-flash was retired by the API; keep this on a current model.
+    DEFAULT_MODEL = "gemini-3.6-flash"
 
     def __init__(self):
         import google.generativeai as genai
@@ -332,7 +349,7 @@ class GoogleProvider(AIProvider):
         system: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
     ) -> CompletionResult:
-        model_name = model or self.DEFAULT_MODEL
+        model_name = self._resolve_model(model)
         genai_model = self._genai.GenerativeModel(model_name)
         prompt = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
         if system:
@@ -390,7 +407,7 @@ class OllamaProvider(AIProvider):
         tools: Optional[List[Dict]] = None,
     ) -> CompletionResult:
         payload: Dict[str, Any] = {
-            "model": model or self.DEFAULT_MODEL,
+            "model": self._resolve_model(model),
             "messages": messages,
             "stream": False,
             "options": {"temperature": temperature, "num_predict": max_tokens},
@@ -404,7 +421,7 @@ class OllamaProvider(AIProvider):
         content = data.get("message", {}).get("content", "")
         return CompletionResult(
             content=content,
-            model=model or self.DEFAULT_MODEL,
+            model=self._resolve_model(model),
             input_tokens=data.get("prompt_eval_count", 0),
             output_tokens=data.get("eval_count", 0),
         )
@@ -420,7 +437,7 @@ class OllamaProvider(AIProvider):
     ) -> AsyncIterator[str]:
         import json as _json
         payload: Dict[str, Any] = {
-            "model": model or self.DEFAULT_MODEL,
+            "model": self._resolve_model(model),
             "messages": messages,
             "stream": True,
             "options": {"temperature": temperature, "num_predict": max_tokens},

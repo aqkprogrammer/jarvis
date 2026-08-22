@@ -39,6 +39,19 @@ interface ChatState {
   updateMessage: (messageId: string, updates: Partial<Message>) => void;
 }
 
+/**
+ * Map a model id to the provider that serves it. The backend routes on the
+ * `provider` field and falls back to DEFAULT_AI_PROVIDER when it is absent, so
+ * an unrecognised id simply defers to the server's configured default.
+ */
+function providerFor(model: string): string | undefined {
+  if (model.startsWith("gemini")) return "google";
+  if (model.startsWith("claude")) return "anthropic";
+  if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3")) return "openai";
+  if (model.startsWith("llama") || model.startsWith("mixtral")) return "groq";
+  return undefined;
+}
+
 export const useChatStore = create<ChatState>()(
   immer((set, get) => ({
     conversations: [],
@@ -54,7 +67,7 @@ export const useChatStore = create<ChatState>()(
     isLoadingConversations: false,
     isLoadingMessages: false,
     isSending: false,
-    selectedModel: "claude-sonnet-4-6",
+    selectedModel: "gemini-3.6-flash",
     searchQuery: "",
 
     loadConversations: async () => {
@@ -167,7 +180,7 @@ export const useChatStore = create<ChatState>()(
         const ws = getWebSocketManager();
         ws.connect(token || undefined, currentConversation.id);
         get().startStreaming(currentConversation.id, STREAMING_MESSAGE_ID);
-        ws.sendChatMessage(content, selectedModel, documentIds);
+        ws.sendChatMessage(content, selectedModel, documentIds, providerFor(selectedModel));
         set((state) => {
           state.isSending = false;
         });

@@ -37,12 +37,20 @@ export function useChat(conversationId?: string) {
   const { accessToken } = useAuthStore();
   const { addNotification } = useUIStore();
 
-  // Setup WebSocket connection — per-conversation, live mode only
-  // (demo mode has no backend; mockApi simulates the assistant reply).
+  // Open the per-conversation socket. Only this part needs a conversation id;
+  // the stream handlers below are registered separately so they are already
+  // listening when the very first message of a brand-new chat streams back.
   useEffect(() => {
     if (!accessToken || !conversationId || isDemoMode()) return;
-
     wsManager.connect(accessToken, conversationId);
+  }, [accessToken, conversationId]);
+
+  // Stream handlers — deliberately NOT keyed on conversationId. Starting a new
+  // chat creates the conversation *during* send, so the id only lands in the URL
+  // after the reply has already streamed; re-subscribing on that change dropped
+  // the in-flight delta/done frames and left the composer stuck on "Stop".
+  useEffect(() => {
+    if (!accessToken || isDemoMode()) return;
 
     const unsubChunk = wsManager.on("message.chunk", (data) => {
       const event = data as MessageChunkEvent;
@@ -85,7 +93,7 @@ export function useChat(conversationId?: string) {
       unsubComplete();
       unsubError();
     };
-  }, [accessToken, conversationId]);
+  }, [accessToken]);
 
   // Load conversation when ID changes
   useEffect(() => {

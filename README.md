@@ -242,6 +242,28 @@ directly, and Compose interpolates it into the container environment.
 | `API_BASE_URL` | – | public base used to build webhook and invite URLs |
 | `CORS_ORIGINS`, `ALLOWED_HOSTS` | – | comma-separated **or** a JSON array; both forms are accepted |
 
+**Choosing a provider.** `DEFAULT_AI_PROVIDER` selects which provider serves a
+request that does not name one, and `DEFAULT_MODEL` selects the model for that
+provider. The chat model picker sends an explicit provider alongside the model,
+so you can mix providers in one deployment as long as each has a key. Example
+for Gemini:
+
+```bash
+GOOGLE_API_KEY=...            # the Gemini API key
+DEFAULT_AI_PROVIDER=google
+DEFAULT_MODEL=gemini-3.6-flash
+```
+
+Model ids go stale as vendors retire them — a retired id fails with
+`404 ... is no longer available`. List what your key can actually reach with:
+
+```bash
+docker compose --env-file .env -f deployment/docker/docker-compose.yml \
+  exec jarvis-backend python -c "import google.generativeai as genai; \
+from app.core.config import settings; genai.configure(api_key=settings.GOOGLE_API_KEY); \
+print([m.name for m in genai.list_models()])"
+```
+
 **Frontend URLs.** `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` must be an
 **origin**, not a path — `frontend/src/lib/api.ts` appends `/api/v1/...` itself.
 Use `http://localhost` / `ws://localhost` behind the Compose Nginx, or
@@ -505,7 +527,9 @@ docker compose --env-file .env -f deployment/docker/docker-compose.yml logs jarv
 | `SECRET_KEY` error on backend startup | `ENVIRONMENT=production` with the default key — set a real one (`openssl rand -hex 32`) |
 | Amber "DEMO MODE" banner with the backend running | The browser can't reach `NEXT_PUBLIC_API_URL`. Check `curl http://localhost/api/v1/health`, then click **Retry backend**. Remember these URLs are baked in at build time — changing them needs `--build`. |
 | `502 Bad Gateway` from Nginx | The backend is still starting (give it ~40 s) or crash-looping — check its logs. |
-| Chat returns a provider error on the first message | No LLM key in `.env`. Add one, then `up -d jarvis-backend celery-worker`. |
+| Chat returns a provider error on the first message | No LLM key in `.env`, or `DEFAULT_AI_PROVIDER` names a provider you have no key for. Fix `.env`, then `up -d jarvis-backend celery-worker`. |
+| `404 ... model is no longer available` | The configured `DEFAULT_MODEL` was retired by the vendor — list current ids with the snippet under [Configuration](#configuration). |
+| `429 You exceeded your current quota` | Provider rate limit, not a JARVIS error. Gemini quotas are per model, so switching model in the chat picker usually works immediately. |
 | Chat replies never stream | WebSocket blocked. Verify the upgrade reaches `/ws/chat/{id}?token=...`; the bundled Nginx config already forwards the upgrade headers. |
 | Document upload stuck "processing" | Qdrant unreachable (`QDRANT_URL`) or an unsupported file type — check the document's error chip |
 | "Run" on a JS code block returns 400 | Node.js isn't available to the backend (`node -e` is the JS sandbox); it is not installed in the backend image |

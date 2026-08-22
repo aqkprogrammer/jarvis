@@ -17,10 +17,17 @@ import { cn } from "@/components/ui/button";
 import { getApi } from "@/lib/api";
 import type { Document } from "@/types";
 
+// Each entry carries the provider that serves it. The backend routes on the
+// `provider` field of the chat frame and falls back to DEFAULT_AI_PROVIDER when
+// it is absent, so sending it here lets one picker span several providers —
+// you only need an API key for the ones you actually select.
 const MODELS = [
-  { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet", desc: "Best balance" },
-  { id: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku", desc: "Fastest" },
-  { id: "claude-opus-4-5", label: "Claude Opus 4", desc: "Most capable" },
+  { id: "gemini-3.7-flash", provider: "google", label: "Gemini 3.7 Flash", desc: "Newest, recommended" },
+  { id: "gemini-3.6-flash", provider: "google", label: "Gemini 3.6 Flash", desc: "Previous flash" },
+  { id: "gemini-3.5-flash", provider: "google", label: "Gemini 3.5 Flash", desc: "Older flash" },
+  { id: "gemini-flash-lite-latest", provider: "google", label: "Gemini Flash Lite", desc: "Cheapest, fastest" },
+  { id: "claude-sonnet-4-6", provider: "anthropic", label: "Claude Sonnet 4.6", desc: "Needs ANTHROPIC_API_KEY" },
+  { id: "gpt-4o", provider: "openai", label: "GPT-4o", desc: "Needs OPENAI_API_KEY" },
 ];
 
 export function ChatInterface() {
