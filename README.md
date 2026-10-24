@@ -1,5 +1,9 @@
 # JARVIS — Just A Rather Very Intelligent System
 
+[![Live Demo](https://img.shields.io/badge/live%20demo-aqkprogrammer.github.io%2Fjarvis-00d4ff?style=flat-square)](https://aqkprogrammer.github.io/jarvis/)
+[![Deploy](https://github.com/aqkprogrammer/jarvis/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/aqkprogrammer/jarvis/actions/workflows/deploy-pages.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](#license)
+
 A full-stack AI assistant platform: FastAPI backend, Next.js 14 frontend,
 multi-agent orchestration, RAG document chat, visual workflow automation, voice,
 third-party integrations, team workspaces, and an admin/observability layer.
@@ -9,13 +13,40 @@ from a single `docker compose` command.
 
 ---
 
+## ▶ Try it in your browser
+
+**[https://aqkprogrammer.github.io/jarvis/](https://aqkprogrammer.github.io/jarvis/)**
+
+No install, no backend, no API key. Sign in with the button on the login screen,
+or use:
+
+| Field | Value |
+|---|---|
+| Email | `demo@jarvis.ai` |
+| Password | `jarvis2025` |
+
+Every screen is interactive and backed by a built-in demo dataset: chat with
+simulated streaming and reasoning traces, RAG documents, the visual workflow
+builder, schedules, integrations, team workspaces, the audit log and the admin
+dashboard. State lives in your browser for the session, so you can create,
+edit and delete freely — a reload resets it.
+
+What the hosted demo **cannot** do, because there is no server behind it: real
+AI responses, real file uploads, real OAuth to third-party services, live
+WebSocket presence, and push notifications. For those, run the full stack with
+[Quick Start (Docker)](#quick-start-docker) below.
+
+---
+
 ## Table of Contents
 
+- [Try it in your browser](#-try-it-in-your-browser)
 - [Quick Start (Docker)](#quick-start-docker)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 - [Demo Mode (no backend)](#demo-mode-no-backend)
+- [Deploying the Demo](#deploying-the-demo)
 - [Local Development (without Docker)](#local-development-without-docker)
 - [Make Targets](#make-targets)
 - [Using the Platform](#using-the-platform)
@@ -298,6 +329,93 @@ screen (there is an auto-fill button):
 | Password | `jarvis2025` |
 
 Click **Retry backend** in the banner to switch to live mode once a backend is up.
+
+The same demo data powers the hosted build at
+[aqkprogrammer.github.io/jarvis](https://aqkprogrammer.github.io/jarvis/). The
+difference is only how demo mode is entered: locally it is a *fallback* after the
+health probe fails, while the hosted bundle sets `NEXT_PUBLIC_DEMO_MODE=true` and
+skips the probe entirely — there is no backend for it to find, and on `https://`
+the probe would otherwise be blocked as mixed content.
+
+---
+
+## Deploying the Demo
+
+The hosted demo is the Next.js frontend compiled to a static bundle and served
+from GitHub Pages. Nothing else is deployed: no Python, no Postgres, no keys.
+
+**The flow**
+
+```
+push to main (frontend/** changed)
+        │
+        ▼
+.github/workflows/deploy-pages.yml
+        │
+        ├─ npm ci
+        ├─ npm run build          STATIC_EXPORT=1
+        │                         NEXT_PUBLIC_BASE_PATH=/jarvis
+        │                         NEXT_PUBLIC_DEMO_MODE=true
+        ├─ touch out/.nojekyll    keeps Pages from eating _next/
+        └─ upload frontend/out ──▶ actions/deploy-pages
+        │
+        ▼
+https://aqkprogrammer.github.io/jarvis/
+```
+
+It also runs on demand from the **Actions** tab (*Deploy demo to GitHub Pages* →
+*Run workflow*).
+
+**Two build modes, one config.** `frontend/next.config.js` branches on
+`STATIC_EXPORT`:
+
+| | `STATIC_EXPORT` unset (default) | `STATIC_EXPORT=1` |
+|---|---|---|
+| `output` | `standalone` — the server build the Docker image runs | `export` — plain HTML/JS/CSS |
+| `basePath` | none | `NEXT_PUBLIC_BASE_PATH` |
+| `rewrites` / `headers` | applied | omitted (no server to apply them) |
+| Images | optimised | `unoptimized` |
+| Routing | server | `trailingSlash`, so `/chat` → `chat/index.html` |
+
+Because the site is served from a sub-path (`/jarvis`, not `/`), `sw.js` derives
+its own base from `self.location.pathname` and `manifest.json` uses relative
+paths — so both files stay correct under Docker at `/` as well.
+
+**Build it yourself**
+
+```bash
+cd frontend
+npm ci
+STATIC_EXPORT=1 NEXT_PUBLIC_BASE_PATH=/jarvis NEXT_PUBLIC_DEMO_MODE=true npm run build
+```
+
+The bundle lands in `frontend/out/`. To preview it at the same sub-path the
+deployed site uses:
+
+```bash
+mkdir -p /tmp/jarvis-preview && ln -sfn "$PWD/out" /tmp/jarvis-preview/jarvis
+cd /tmp/jarvis-preview && python3 -m http.server 8100
+# → http://localhost:8100/jarvis/
+```
+
+**Forking it.** `NEXT_PUBLIC_BASE_PATH` is derived from the repository name in
+the workflow, so a fork publishes to `https://<you>.github.io/<your-repo>/` with
+no edits. Enable Pages once under *Settings → Pages → Source: GitHub Actions*.
+Serving from a custom domain or a user/org root site means no sub-path — set
+`NEXT_PUBLIC_BASE_PATH` to an empty string.
+
+**Pointing the static build at a real backend.** Drop `NEXT_PUBLIC_DEMO_MODE`
+and set the API URLs at build time; the bundle then talks to that host instead
+of using the mock layer. The backend must allow the Pages origin via CORS, and
+must be served over `https://` — a browser on an `https://` page will block
+calls to an `http://` backend.
+
+```bash
+STATIC_EXPORT=1 NEXT_PUBLIC_BASE_PATH=/jarvis \
+NEXT_PUBLIC_API_URL=https://api.example.com \
+NEXT_PUBLIC_WS_URL=wss://api.example.com \
+npm run build
+```
 
 ---
 
