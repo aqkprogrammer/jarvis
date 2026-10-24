@@ -10,7 +10,8 @@ import {
 import { Header } from "@/components/dashboard/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
+import { getApi } from "@/lib/api";
+import { extractItems } from "@/components/integrations/shared";
 import { Task, TaskStatus, TaskPriority } from "@/types";
 import { cn } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
@@ -159,7 +160,7 @@ export default function TasksPage() {
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ["tasks", statusFilter],
     queryFn: () =>
-      api.tasks.list({
+      getApi().tasks.list({
         status: statusFilter !== "all" ? statusFilter : undefined,
         per_page: 50,
       }).then((r) => r.data),
@@ -167,7 +168,7 @@ export default function TasksPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof newTask) => api.tasks.create(data),
+    mutationFn: (data: typeof newTask) => getApi().tasks.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       setShowCreate(false);
@@ -176,16 +177,16 @@ export default function TasksPage() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => api.tasks.cancel(id),
+    mutationFn: (id: string) => getApi().tasks.cancel(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.tasks.delete(id),
+    mutationFn: (id: string) => getApi().tasks.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
-  const tasks: Task[] = tasksData?.data || tasksData || [];
+  const tasks: Task[] = extractItems<Task>(tasksData);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

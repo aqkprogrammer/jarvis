@@ -8,7 +8,8 @@ import {
   Trash2, Edit3, Filter, LayoutGrid, List,
   Lightbulb, Heart, Clock, Zap
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { getApi } from "@/lib/api";
+import { extractItems } from "@/components/integrations/shared";
 import { Memory, MemoryType } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -117,7 +118,7 @@ export function MemoryExplorer() {
   const { data: memoriesData, isLoading } = useQuery({
     queryKey: ["memories", search, typeFilter],
     queryFn: () =>
-      api.memory.list({
+      getApi().memory.list({
         search: search || undefined,
         type: typeFilter !== "all" ? typeFilter : undefined,
         per_page: 50,
@@ -126,13 +127,13 @@ export function MemoryExplorer() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.memory.delete(id),
+    mutationFn: (id: string) => getApi().memory.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["memories"] }),
   });
 
   const createMutation = useMutation({
     mutationFn: (data: { content: string; type: string; importance: number; tags: string[] }) =>
-      api.memory.create(data),
+      getApi().memory.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["memories"] });
       setShowCreateModal(false);
@@ -140,7 +141,7 @@ export function MemoryExplorer() {
     },
   });
 
-  const memories: Memory[] = memoriesData?.data || memoriesData || [];
+  const memories: Memory[] = extractItems<Memory>(memoriesData);
 
   const handleCreate = () => {
     createMutation.mutate({

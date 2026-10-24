@@ -1,7 +1,14 @@
 /* JARVIS service worker — offline shell, API caching strategy, web push. */
 
 var CACHE_VERSION = "jarvis-cache-v1";
-var PRECACHE_URLS = ["/", "/manifest.json", "/icons/icon.svg"];
+
+// The worker is served from <base>/sw.js, so its own path yields the base.
+// "/sw.js" -> "/", "/jarvis/sw.js" -> "/jarvis/". Keeps one file correct for
+// both the root Docker deployment and the GitHub Pages sub-path.
+var BASE = self.location.pathname.replace(/sw\.js$/, "");
+var SHELL_URL = BASE;
+var ICON_URL = BASE + "icons/icon.svg";
+var PRECACHE_URLS = [SHELL_URL, BASE + "manifest.json", ICON_URL];
 
 var OFFLINE_HTML =
   "<!DOCTYPE html>" +
@@ -70,7 +77,7 @@ self.addEventListener("fetch", function (event) {
   }
 
   // API: network-first, fall back to last cached response
-  if (url.pathname.indexOf("/api/") === 0) {
+  if (url.pathname.indexOf(BASE + "api/") === 0) {
     event.respondWith(
       fetch(request)
         .then(function (response) {
@@ -98,7 +105,10 @@ self.addEventListener("fetch", function (event) {
   }
 
   // Static assets and icons: cache-first
-  if (url.pathname.indexOf("/_next/static/") === 0 || url.pathname.indexOf("/icons/") === 0) {
+  if (
+    url.pathname.indexOf(BASE + "_next/static/") === 0 ||
+    url.pathname.indexOf(BASE + "icons/") === 0
+  ) {
     event.respondWith(
       caches.match(request).then(function (cached) {
         if (cached) {
@@ -122,7 +132,7 @@ self.addEventListener("fetch", function (event) {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request).catch(function () {
-        return caches.match("/").then(function (cached) {
+        return caches.match(SHELL_URL).then(function (cached) {
           if (cached) {
             return cached;
           }
@@ -136,7 +146,7 @@ self.addEventListener("fetch", function (event) {
 });
 
 self.addEventListener("push", function (event) {
-  var data = { title: "JARVIS", body: "You have a new notification.", url: "/" };
+  var data = { title: "JARVIS", body: "You have a new notification.", url: BASE };
   if (event.data) {
     try {
       var parsed = event.data.json();
@@ -150,8 +160,8 @@ self.addEventListener("push", function (event) {
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: "/icons/icon.svg",
-      badge: "/icons/icon.svg",
+      icon: ICON_URL,
+      badge: ICON_URL,
       data: { url: data.url },
     })
   );
@@ -160,7 +170,7 @@ self.addEventListener("push", function (event) {
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
   var targetUrl =
-    (event.notification.data && event.notification.data.url) || "/";
+    (event.notification.data && event.notification.data.url) || BASE;
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })

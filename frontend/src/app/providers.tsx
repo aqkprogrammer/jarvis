@@ -9,7 +9,7 @@ import { isBackendAvailable } from "@/lib/backendCheck";
 import { setDemoMode } from "@/lib/api";
 
 function AuthInitializer({ children }: { children: React.ReactNode }) {
-  const { loadUser, accessToken } = useAuthStore();
+  const { loadUser } = useAuthStore();
   const { setDemoMode: storeDemoMode, setBackendChecked } = useUIStore();
   const [initialized, setInitialized] = useState(false);
 
@@ -22,8 +22,22 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
       storeDemoMode(demo);      // update UI store for components to read
       setBackendChecked(true);
 
-      // 2. Load user (uses real or mock api depending on demo flag)
-      if (accessToken) {
+      // 2. Load user (uses real or mock api depending on demo flag).
+      // The persisted token arrives via zustand's rehydration, which has not
+      // necessarily run by the time this effect first fires — reading a value
+      // captured at mount would drop the session and bounce a reload of any
+      // dashboard route back to the login screen. Wait for hydration, then
+      // read the token off the live store.
+      if (!useAuthStore.persist.hasHydrated()) {
+        await new Promise<void>((resolve) => {
+          const unsubscribe = useAuthStore.persist.onFinishHydration(() => {
+            unsubscribe();
+            resolve();
+          });
+        });
+      }
+
+      if (useAuthStore.getState().accessToken) {
         await loadUser().catch(() => {});
       }
       setInitialized(true);

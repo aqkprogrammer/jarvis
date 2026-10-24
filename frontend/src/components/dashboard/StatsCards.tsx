@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { getApi } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare, Cpu, Brain, CheckCircle2, TrendingUp, Clock } from "lucide-react";
 import { cn } from "@/components/ui/button";
@@ -55,7 +55,7 @@ function StatCard({ title, value, change, positive, icon, color = "text-primary"
 export function StatsCards() {
   const { data: usage, isLoading } = useQuery({
     queryKey: ["usage-stats"],
-    queryFn: () => api.analytics.usage().then((r) => r.data),
+    queryFn: () => getApi().analytics.usage().then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   });
 

@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useUIStore } from "@/stores/uiStore";
 import { Eye, EyeOff, Zap, Shield, Cpu, Server, FlaskConical } from "lucide-react";
 import { DEMO_EMAIL, DEMO_PASSWORD } from "@/lib/mockData";
+import { isDemoModeForced } from "@/lib/backendCheck";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +17,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [glitchActive, setGlitchActive] = useState(false);
+  // The hosted static build is a demo by design, not a backend outage.
+  const demoForced = isDemoModeForced();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -228,7 +231,7 @@ export default function LoginPage() {
                   <Server size={14} className="text-amber-400 mt-0.5 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-mono text-amber-400 font-semibold mb-1">
-                      Demo Mode — Backend offline
+                      {demoForced ? "Live Demo — no backend required" : "Demo Mode — Backend offline"}
                     </p>
                     <p className="text-xs font-mono text-amber-400/70 mb-2">
                       Use the demo account to explore all features with static data.

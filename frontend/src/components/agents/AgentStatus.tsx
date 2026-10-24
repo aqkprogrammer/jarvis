@@ -3,7 +3,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Bot, Play, Square, RefreshCw, CheckCircle2, AlertCircle, Clock, Zap } from "lucide-react";
-import { api } from "@/lib/api";
+import { getApi } from "@/lib/api";
+import { extractItems } from "@/components/integrations/shared";
 import { Agent, AgentStatus as AgentStatusType } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -124,21 +125,21 @@ export function AgentStatus() {
 
   const { data: agentsData, isLoading } = useQuery({
     queryKey: ["agents"],
-    queryFn: () => api.agents.list().then((r) => r.data),
+    queryFn: () => getApi().agents.list().then((r) => r.data),
     refetchInterval: 10000,
   });
 
   const startMutation = useMutation({
-    mutationFn: (id: string) => api.agents.start(id),
+    mutationFn: (id: string) => getApi().agents.start(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
   });
 
   const stopMutation = useMutation({
-    mutationFn: (id: string) => api.agents.stop(id),
+    mutationFn: (id: string) => getApi().agents.stop(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
   });
 
-  const agents: Agent[] = agentsData?.data || agentsData || [];
+  const agents: Agent[] = extractItems<Agent>(agentsData);
   const runningCount = agents.filter((a) => a.status === "running").length;
 
   return (

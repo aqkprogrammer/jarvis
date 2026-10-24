@@ -16,19 +16,24 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+// Next does not prefix basePath onto metadata URLs, so do it here — the Pages
+// build serves everything under /jarvis.
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 export const metadata: Metadata = {
   title: "JARVIS - AI Assistant",
   description: "Your Personal AI Assistant - Just A Rather Very Intelligent System",
   keywords: ["AI", "assistant", "JARVIS", "chat", "intelligence"],
   authors: [{ name: "JARVIS System" }],
-  manifest: "/manifest.json",
+  manifest: `${basePath}/manifest.json`,
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "JARVIS",
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: `${basePath}/icons/icon.svg`,
+    apple: `${basePath}/icons/icon.svg`,
   },
 };
 

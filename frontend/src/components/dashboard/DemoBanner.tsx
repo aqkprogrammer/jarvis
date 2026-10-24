@@ -4,13 +4,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, X, RefreshCw, Server } from "lucide-react";
 import { useState } from "react";
 import { useUIStore } from "@/stores/uiStore";
-import { resetBackendCache } from "@/lib/backendCheck";
+import { resetBackendCache, isDemoModeForced } from "@/lib/backendCheck";
 import { setDemoMode } from "@/lib/api";
 
 export function DemoBanner() {
   const { isDemoMode, setDemoMode: storeDemoMode } = useUIStore();
   const [dismissed, setDismissed] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // In the hosted static build there is no backend to retry against.
+  const forced = isDemoModeForced();
 
   const handleRetry = async () => {
     setRetrying(true);
@@ -43,20 +45,24 @@ export function DemoBanner() {
               <span className="text-xs font-mono">
                 <span className="font-semibold">DEMO MODE</span>
                 {" — "}
-                Backend unavailable. Running with static demo data.
+                {forced
+                  ? "Static showcase build. Every screen is live, backed by demo data; run the full stack locally for real AI responses."
+                  : "Backend unavailable. Running with static demo data."}
                 {" "}
                 <span className="opacity-70">Login: demo@jarvis.ai / jarvis2025</span>
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-4">
-              <button
-                onClick={handleRetry}
-                disabled={retrying}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={retrying ? "animate-spin" : ""} />
-                {retrying ? "Connecting..." : "Retry backend"}
-              </button>
+              {!forced && (
+                <button
+                  onClick={handleRetry}
+                  disabled={retrying}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={retrying ? "animate-spin" : ""} />
+                  {retrying ? "Connecting..." : "Retry backend"}
+                </button>
+              )}
               <button
                 onClick={() => setDismissed(true)}
                 className="text-amber-400/60 hover:text-amber-400 transition-colors"

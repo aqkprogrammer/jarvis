@@ -13,7 +13,10 @@ export function ServiceWorkerRegistrar() {
     if (!("serviceWorker" in navigator)) return;
     if (process.env.NODE_ENV !== "production") return;
 
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    // Registering under the basePath keeps the worker's scope to this app and
+    // lets sw.js derive its own asset base from location.pathname.
+    const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+    navigator.serviceWorker.register(`${basePath}/sw.js`).catch(() => {
       // Registration failed (unsupported/blocked) — app works without it
     });
   }, []);

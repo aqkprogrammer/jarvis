@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { VoiceState } from "@/types";
-import { api } from "@/lib/api";
+import { getApi } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 
 interface UseVoiceOptions {
@@ -161,7 +161,7 @@ export function useVoice(options: UseVoiceOptions = {}) {
   const transcribeAudio = useCallback(async (audioBlob: Blob) => {
     setVoiceState("processing");
     try {
-      const response = await api.voice.transcribe(audioBlob);
+      const response = await getApi().voice.transcribe(audioBlob);
       const { transcript: text, confidence } = response.data;
       setTranscript(text);
       setVoiceState("idle");
@@ -184,7 +184,7 @@ export function useVoice(options: UseVoiceOptions = {}) {
     setIsPlaying(true);
 
     try {
-      const response = await api.voice.synthesize(text, voice);
+      const response = await getApi().voice.synthesize(text, voice);
       const audioBlob = response.data;
       const audioUrl = URL.createObjectURL(audioBlob);
 
